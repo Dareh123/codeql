@@ -9,29 +9,47 @@
 edges
 | StaticInitializationVector.java:13:21:13:81 | new byte[] : byte[] | StaticInitializationVector.java:15:61:15:62 | iv : byte[] | provenance |  |
 | StaticInitializationVector.java:15:35:15:63 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:19:51:19:56 | ivSpec | provenance | Sink:MaD:1 |
-| StaticInitializationVector.java:15:61:15:62 | iv : byte[] | StaticInitializationVector.java:15:35:15:63 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:2 |
+| StaticInitializationVector.java:15:61:15:62 | iv : byte[] | StaticInitializationVector.java:15:35:15:63 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
 | StaticInitializationVector.java:26:21:26:32 | new byte[] : byte[] | StaticInitializationVector.java:28:61:28:62 | iv : byte[] | provenance |  |
 | StaticInitializationVector.java:28:35:28:63 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:32:51:32:56 | ivSpec | provenance | Sink:MaD:1 |
-| StaticInitializationVector.java:28:61:28:62 | iv : byte[] | StaticInitializationVector.java:28:35:28:63 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:2 |
+| StaticInitializationVector.java:28:61:28:62 | iv : byte[] | StaticInitializationVector.java:28:35:28:63 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
 | StaticInitializationVector.java:39:21:39:32 | new byte[] : byte[] | StaticInitializationVector.java:44:54:44:55 | iv : byte[] | provenance |  |
 | StaticInitializationVector.java:44:34:44:56 | new IvParameterSpec(...) : IvParameterSpec | StaticInitializationVector.java:48:51:48:56 | ivSpec | provenance | Sink:MaD:1 |
-| StaticInitializationVector.java:44:54:44:55 | iv : byte[] | StaticInitializationVector.java:44:34:44:56 | new IvParameterSpec(...) : IvParameterSpec | provenance | MaD:3 |
+| StaticInitializationVector.java:44:54:44:55 | iv : byte[] | StaticInitializationVector.java:44:34:44:56 | new IvParameterSpec(...) : IvParameterSpec | provenance | MaD:4 |
 | StaticInitializationVector.java:55:30:58:9 | new byte[][] : byte[][] | StaticInitializationVector.java:60:61:60:72 | ...[...] : byte[] | provenance |  |
 | StaticInitializationVector.java:60:35:60:73 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:64:51:64:56 | ivSpec | provenance | Sink:MaD:1 |
-| StaticInitializationVector.java:60:61:60:72 | ...[...] : byte[] | StaticInitializationVector.java:60:35:60:73 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:2 |
+| StaticInitializationVector.java:60:61:60:72 | ...[...] : byte[] | StaticInitializationVector.java:60:35:60:73 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
 | StaticInitializationVector.java:71:30:74:9 | new byte[][] : byte[][] | StaticInitializationVector.java:76:61:76:72 | ...[...] : byte[] | provenance |  |
 | StaticInitializationVector.java:76:35:76:73 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:80:51:80:56 | ivSpec | provenance | Sink:MaD:1 |
-| StaticInitializationVector.java:76:61:76:72 | ...[...] : byte[] | StaticInitializationVector.java:76:35:76:73 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:2 |
+| StaticInitializationVector.java:76:61:76:72 | ...[...] : byte[] | StaticInitializationVector.java:76:35:76:73 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
 | StaticInitializationVector.java:87:24:90:9 | {...} : byte[][] [[]] : byte[] | StaticInitializationVector.java:92:61:92:63 | ivs : byte[][] [[]] : byte[] | provenance |  |
 | StaticInitializationVector.java:88:13:88:23 | new byte[] : byte[] | StaticInitializationVector.java:87:24:90:9 | {...} : byte[][] [[]] : byte[] | provenance |  |
 | StaticInitializationVector.java:89:13:89:24 | new byte[] : byte[] | StaticInitializationVector.java:87:24:90:9 | {...} : byte[][] [[]] : byte[] | provenance |  |
 | StaticInitializationVector.java:92:35:92:67 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:96:51:96:56 | ivSpec | provenance | Sink:MaD:1 |
 | StaticInitializationVector.java:92:61:92:63 | ivs : byte[][] [[]] : byte[] | StaticInitializationVector.java:92:61:92:66 | ...[...] : byte[] | provenance |  |
-| StaticInitializationVector.java:92:61:92:66 | ...[...] : byte[] | StaticInitializationVector.java:92:35:92:67 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:2 |
+| StaticInitializationVector.java:92:61:92:66 | ...[...] : byte[] | StaticInitializationVector.java:92:35:92:67 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
+| StaticInitializationVector.java:103:21:103:32 | new byte[] : byte[] | StaticInitializationVector.java:108:61:108:62 | iv : byte[] | provenance |  |
+| StaticInitializationVector.java:108:35:108:63 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:112:51:112:56 | ivSpec | provenance | Sink:MaD:1 |
+| StaticInitializationVector.java:108:61:108:62 | iv : byte[] | StaticInitializationVector.java:108:35:108:63 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
+| StaticInitializationVector.java:120:21:120:32 | new byte[] : byte[] | StaticInitializationVector.java:125:61:125:62 | iv : byte[] | provenance |  |
+| StaticInitializationVector.java:125:35:125:63 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:129:51:129:56 | ivSpec | provenance | Sink:MaD:1 |
+| StaticInitializationVector.java:125:61:125:62 | iv : byte[] | StaticInitializationVector.java:125:35:125:63 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
+| StaticInitializationVector.java:136:30:136:41 | new byte[] : byte[] | StaticInitializationVector.java:140:26:140:36 | randomBytes : byte[] | provenance |  |
+| StaticInitializationVector.java:139:21:139:32 | new byte[] : byte[] | StaticInitializationVector.java:142:61:142:62 | iv : byte[] | provenance |  |
+| StaticInitializationVector.java:140:26:140:36 | randomBytes : byte[] | StaticInitializationVector.java:140:42:140:43 | iv [post update] : byte[] | provenance | MaD:2 |
+| StaticInitializationVector.java:140:42:140:43 | iv [post update] : byte[] | StaticInitializationVector.java:142:61:142:62 | iv : byte[] | provenance |  |
+| StaticInitializationVector.java:142:35:142:63 | new GCMParameterSpec(...) : GCMParameterSpec | StaticInitializationVector.java:146:51:146:56 | ivSpec | provenance | Sink:MaD:1 |
+| StaticInitializationVector.java:142:61:142:62 | iv : byte[] | StaticInitializationVector.java:142:35:142:63 | new GCMParameterSpec(...) : GCMParameterSpec | provenance | MaD:3 |
+| StaticInitializationVector.java:172:30:172:43 | new byte[] : byte[] | StaticInitializationVector.java:174:16:174:26 | randomBytes : byte[] | provenance |  |
+| StaticInitializationVector.java:174:16:174:26 | randomBytes : byte[] | StaticInitializationVector.java:179:21:179:32 | generate(...) : byte[] | provenance |  |
+| StaticInitializationVector.java:179:21:179:32 | generate(...) : byte[] | StaticInitializationVector.java:181:54:181:55 | iv : byte[] | provenance |  |
+| StaticInitializationVector.java:181:34:181:56 | new IvParameterSpec(...) : IvParameterSpec | StaticInitializationVector.java:185:51:185:56 | ivSpec | provenance | Sink:MaD:1 |
+| StaticInitializationVector.java:181:54:181:55 | iv : byte[] | StaticInitializationVector.java:181:34:181:56 | new IvParameterSpec(...) : IvParameterSpec | provenance | MaD:4 |
 models
 | 1 | Sink: javax.crypto; Cipher; true; init; (int,Key,AlgorithmParameterSpec); ; Argument[2]; encryption-iv; manual |
-| 2 | Summary: javax.crypto.spec; GCMParameterSpec; true; GCMParameterSpec; ; ; Argument[1]; Argument[this]; taint; manual |
-| 3 | Summary: javax.crypto.spec; IvParameterSpec; true; IvParameterSpec; ; ; Argument[0]; Argument[this]; taint; manual |
+| 2 | Summary: java.lang; System; false; arraycopy; ; ; Argument[0]; Argument[2]; taint; manual |
+| 3 | Summary: javax.crypto.spec; GCMParameterSpec; true; GCMParameterSpec; ; ; Argument[1]; Argument[this]; taint; manual |
+| 4 | Summary: javax.crypto.spec; IvParameterSpec; true; IvParameterSpec; ; ; Argument[0]; Argument[this]; taint; manual |
 nodes
 | StaticInitializationVector.java:13:21:13:81 | new byte[] : byte[] | semmle.label | new byte[] : byte[] |
 | StaticInitializationVector.java:15:35:15:63 | new GCMParameterSpec(...) : GCMParameterSpec | semmle.label | new GCMParameterSpec(...) : GCMParameterSpec |
@@ -60,4 +78,25 @@ nodes
 | StaticInitializationVector.java:92:61:92:63 | ivs : byte[][] [[]] : byte[] | semmle.label | ivs : byte[][] [[]] : byte[] |
 | StaticInitializationVector.java:92:61:92:66 | ...[...] : byte[] | semmle.label | ...[...] : byte[] |
 | StaticInitializationVector.java:96:51:96:56 | ivSpec | semmle.label | ivSpec |
+| StaticInitializationVector.java:103:21:103:32 | new byte[] : byte[] | semmle.label | new byte[] : byte[] |
+| StaticInitializationVector.java:108:35:108:63 | new GCMParameterSpec(...) : GCMParameterSpec | semmle.label | new GCMParameterSpec(...) : GCMParameterSpec |
+| StaticInitializationVector.java:108:61:108:62 | iv : byte[] | semmle.label | iv : byte[] |
+| StaticInitializationVector.java:112:51:112:56 | ivSpec | semmle.label | ivSpec |
+| StaticInitializationVector.java:120:21:120:32 | new byte[] : byte[] | semmle.label | new byte[] : byte[] |
+| StaticInitializationVector.java:125:35:125:63 | new GCMParameterSpec(...) : GCMParameterSpec | semmle.label | new GCMParameterSpec(...) : GCMParameterSpec |
+| StaticInitializationVector.java:125:61:125:62 | iv : byte[] | semmle.label | iv : byte[] |
+| StaticInitializationVector.java:129:51:129:56 | ivSpec | semmle.label | ivSpec |
+| StaticInitializationVector.java:136:30:136:41 | new byte[] : byte[] | semmle.label | new byte[] : byte[] |
+| StaticInitializationVector.java:139:21:139:32 | new byte[] : byte[] | semmle.label | new byte[] : byte[] |
+| StaticInitializationVector.java:140:26:140:36 | randomBytes : byte[] | semmle.label | randomBytes : byte[] |
+| StaticInitializationVector.java:140:42:140:43 | iv [post update] : byte[] | semmle.label | iv [post update] : byte[] |
+| StaticInitializationVector.java:142:35:142:63 | new GCMParameterSpec(...) : GCMParameterSpec | semmle.label | new GCMParameterSpec(...) : GCMParameterSpec |
+| StaticInitializationVector.java:142:61:142:62 | iv : byte[] | semmle.label | iv : byte[] |
+| StaticInitializationVector.java:146:51:146:56 | ivSpec | semmle.label | ivSpec |
+| StaticInitializationVector.java:172:30:172:43 | new byte[] : byte[] | semmle.label | new byte[] : byte[] |
+| StaticInitializationVector.java:174:16:174:26 | randomBytes : byte[] | semmle.label | randomBytes : byte[] |
+| StaticInitializationVector.java:179:21:179:32 | generate(...) : byte[] | semmle.label | generate(...) : byte[] |
+| StaticInitializationVector.java:181:34:181:56 | new IvParameterSpec(...) : IvParameterSpec | semmle.label | new IvParameterSpec(...) : IvParameterSpec |
+| StaticInitializationVector.java:181:54:181:55 | iv : byte[] | semmle.label | iv : byte[] |
+| StaticInitializationVector.java:185:51:185:56 | ivSpec | semmle.label | ivSpec |
 subpaths
