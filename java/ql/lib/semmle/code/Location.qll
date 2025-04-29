@@ -3,6 +3,8 @@
  *
  * Locations represent parts of files and are used to map elements to their source location.
  */
+overlay[local?]
+module;
 
 import FileSystem
 import semmle.code.java.Element
@@ -218,4 +220,18 @@ private predicate fixedHasLocation(Top l, Location loc, File f) {
     ) and
   not hasSourceLocation(l, _, _) and
   locations_default(loc, f, _, _, _, _)
+}
+
+overlay[local]
+pragma[nomagic]
+predicate discardableLocation(string file, @location l) {
+  not hasOverlay() and
+  file = getRawFileForLoc(l) and
+  not exists(@file f | hasLocation(f, l))
+}
+
+overlay[discard_entity]
+pragma[nomagic]
+predicate discardLocation(@location l) {
+  exists(string file | discardableLocation(file, l) and discardFile(file))
 }

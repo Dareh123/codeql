@@ -1,4 +1,6 @@
 /** Provides all default Java QL imports. */
+overlay[local?]
+module;
 
 import Customizations
 import semmle.code.FileSystem
@@ -24,6 +26,7 @@ import semmle.code.java.KotlinType
 import semmle.code.java.Member
 import semmle.code.java.Modifier
 import semmle.code.java.Modules
+import semmle.code.java.Overlay
 import semmle.code.java.Package
 import semmle.code.java.Statement
 import semmle.code.java.Type

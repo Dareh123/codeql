@@ -1,6 +1,8 @@
 /**
  * Provides classes and predicates for working with Java statements.
  */
+overlay[local?]
+module;
 
 import Expr
 import metrics.MetricStmt
@@ -984,4 +986,17 @@ class SuperConstructorInvocationStmt extends Stmt, ConstructorCall, @superconstr
   override string getHalsteadID() { result = "SuperConstructorInvocationStmt" }
 
   override string getAPrimaryQlClass() { result = "SuperConstructorInvocationStmt" }
+}
+
+overlay[local]
+pragma[nomagic]
+predicate discardableStmt(string file, @stmt s) {
+  not hasOverlay() and
+  file = getRawFile(s)
+}
+
+overlay[discard_entity]
+pragma[nomagic]
+predicate discardStmt(@stmt s) {
+  exists(string file | discardableStmt(file, s) and discardFile(file))
 }

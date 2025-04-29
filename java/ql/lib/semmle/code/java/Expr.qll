@@ -1,6 +1,8 @@
 /**
  * Provides classes for working with Java expressions.
  */
+overlay[local?]
+module;
 
 import java
 private import semmle.code.java.frameworks.android.Compose
@@ -2698,4 +2700,17 @@ class RecordPatternExpr extends Expr, @recordpatternexpr {
       not subPattern.asBindingOrUnnamedPattern().isAnonymous()
     )
   }
+}
+
+overlay[local]
+pragma[nomagic]
+predicate discardableExpr(string file, @expr e) {
+  not hasOverlay() and
+  file = getRawFile(e)
+}
+
+overlay[discard_entity]
+pragma[nomagic]
+predicate discardExpr(@expr e) {
+  exists(string file | discardableExpr(file, e) and discardFile(file))
 }

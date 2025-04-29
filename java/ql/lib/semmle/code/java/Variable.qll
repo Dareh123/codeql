@@ -1,6 +1,8 @@
 /**
  * Provides classes and predicates for working with Java variables and their declarations.
  */
+overlay[local?]
+module;
 
 import Element
 
@@ -130,4 +132,17 @@ class Parameter extends Element, @param, LocalScopeVariable {
 
   /** Holds if this is an anonymous parameter, `_` */
   predicate isAnonymous() { this.getName() = "" }
+}
+
+overlay[local]
+pragma[nomagic]
+predicate discardableLocalVarDecl(string file, @localscopevariable l) {
+  not hasOverlay() and
+  file = getRawFile(l)
+}
+
+overlay[discard_entity]
+pragma[nomagic]
+predicate discardLocalVarDecl(@localscopevariable l) {
+  exists(string file | discardableLocalVarDecl(file, l) and discardFile(file))
 }

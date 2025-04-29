@@ -2,6 +2,8 @@
  * Provides classes and predicates for working with members of Java classes and interfaces,
  * that is, methods, constructors, fields and nested types.
  */
+overlay[local?]
+module;
 
 import Element
 import Type
@@ -621,7 +623,11 @@ class SrcMethod extends Method {
       then implementsInterfaceMethod(result, this)
       else result.getASourceOverriddenMethod*() = this
     ) and
-    (exists(result.getBody()) or result.hasModifier("native"))
+    (
+      hasOverlay() or
+      exists(result.getBody()) or
+      result.hasModifier("native")
+    )
   }
 }
 
@@ -894,4 +900,37 @@ class ExtensionMethod extends Method {
     then result = 1
     else result = 0
   }
+}
+
+overlay[local]
+pragma[nomagic]
+predicate discardableMethod(string file, @method m) {
+  not hasOverlay() and
+  file = getRawFile(m) and
+  exists(@classorinterface c | methods(m, _, _, _, c, _) and isAnonymClass(c, _))
+}
+
+overlay[discard_entity]
+pragma[nomagic]
+predicate discardAnonMethod(@method m) {
+  exists(string file | discardableMethod(file, m) and discardFile(file))
+}
+
+overlay[local]
+pragma[nomagic]
+predicate discardableBaseMethod(string file, @method m) {
+  not hasOverlay() and
+  file = getRawFile(m)
+}
+
+overlay[local]
+pragma[nomagic]
+predicate usedOverlayMethod(@method m) { hasOverlay() and methods(m, _, _, _, _, _) }
+
+overlay[discard_entity]
+pragma[nomagic]
+predicate discardMethod(@method m) {
+  exists(string file |
+    discardableBaseMethod(file, m) and discardFile(file) and not usedOverlayMethod(m)
+  )
 }
