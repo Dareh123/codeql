@@ -1,3 +1,152 @@
+## 1.8.10
+
+No user-facing changes.
+
+## 1.8.9
+
+No user-facing changes.
+
+## 1.8.8
+
+No user-facing changes.
+
+## 1.8.7
+
+No user-facing changes.
+
+## 1.8.6
+
+No user-facing changes.
+
+## 1.8.5
+
+### Minor Analysis Improvements
+
+* The `py/modification-of-locals` query no longer flags modifications of a `locals()` dictionary that has been passed out of the scope in which `locals()` was called (for example, by passing it to another function or storing it in an instance attribute). In such cases the dictionary is used as an ordinary mapping and modifying it is meaningful, so these were false positives. The "modification has no effect" claim only applies within the scope that called `locals()`, which is now the only case reported.
+
+## 1.8.4
+
+No user-facing changes.
+
+## 1.8.3
+
+No user-facing changes.
+
+## 1.8.2
+
+No user-facing changes.
+
+## 1.8.1
+
+### Minor Analysis Improvements
+
+- The `py/bind-socket-all-network-interfaces` query now uses the global data-flow library, leading to better precision and more results. Also, wrappers of `socket.socket` in the `eventlet` and `gevent` libraries are now also recognized as socket binding operations.
+
+## 1.8.0
+
+### Query Metadata Changes
+
+* The `@security-severity` metadata of `py/log-injection` has been reduced from 7.8 (high) to 6.1 (medium).
+* The `@security-severity` metadata of `py/jinja2/autoescape-false` and `py/reflective-xss` has been increased from 6.1 (medium) to 7.8 (high).
+
+### Major Analysis Improvements
+
+- Several quality queries have been ported away from using the legacy points-to library. This may lead to changes in alerts.
+
+## 1.7.11
+
+No user-facing changes.
+
+## 1.7.10
+
+No user-facing changes.
+
+## 1.7.9
+
+No user-facing changes.
+
+## 1.7.8
+
+No user-facing changes.
+
+## 1.7.7
+
+No user-facing changes.
+
+## 1.7.6
+
+No user-facing changes.
+
+## 1.7.5
+
+No user-facing changes.
+
+## 1.7.4
+
+No user-facing changes.
+
+## 1.7.3
+
+No user-facing changes.
+
+## 1.7.2
+
+No user-facing changes.
+
+## 1.7.1
+
+No user-facing changes.
+
+## 1.7.0
+
+### Query Metadata Changes
+
+* Reduced the `security-severity` score of the `py/overly-large-range` query from 5.0 to 4.0 to better reflect its impact.
+
+## 1.6.8
+
+### Minor Analysis Improvements
+
+* The `py/insecure-cookie` query has been split into multiple queries; with `py/insecure-cookie` checking for cases in which `Secure` flag is not set, `py/client-exposed-cookie` checking for cases in which the `HttpOnly` flag is not set, and the `py/samesite-none` query checking for cases in which the `SameSite` attribute is set to `None`. These queries also now only alert for cases in which the cookie is detected to contain sensitive data.
+
+## 1.6.7
+
+No user-facing changes.
+
+## 1.6.6
+
+### Minor Analysis Improvements
+
+- The queries that check for unmatchable `$` and `^` in regular expressions did not account correctly for occurrences inside lookahead and lookbehind assertions. These occurrences are now handled correctly, eliminating this source of false positives.
+* The `py/inheritance/signature-mismatch` query has been modernized. It produces more precise results and more descriptive alert messages. 
+* The `py/inheritance/incorrect-overriding-signature` query has been deprecated. Its results have been consolidated into the `py/inheritance/signature-mismatch` query.
+
+## 1.6.5
+
+### Minor Analysis Improvements
+
+* The queries `py/missing-call-to-init`, `py/missing-calls-to-del`, `py/multiple-calls-to-init`, and `py/multiple-calls-to-del` queries have been modernized; no longer relying on outdated libraries, producing more precise results with more descriptive alert messages, and improved documentation.
+
+## 1.6.4
+
+### Minor Analysis Improvements
+
+* The `py/unexpected-raise-in-special-method` query has been modernized. It produces additional results in cases where the exception is 
+only raised conditionally. Its precision has been changed from `very-high` to `high`.
+* The queries `py/incomplete-ordering`, `py/inconsistent-equality`, and `py/equals-hash-mismatch` have been modernized; no longer relying on outdated libraries, improved documentation, and no longer producing alerts for problems specific to Python 2.
+
+## 1.6.3
+
+No user-facing changes.
+
+## 1.6.2
+
+No user-facing changes.
+
+## 1.6.1
+
+No user-facing changes.
+
 ## 1.6.0
 
 ### Query Metadata Changes

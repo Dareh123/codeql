@@ -1,6 +1,4 @@
-# Cache Poisoning in GitHub Actions
-
-## Description
+## Overview
 
 GitHub Actions cache poisoning is a technique that allows an attacker to inject malicious content into the Action's cache from unprivileged workflow, potentially leading to code execution in privileged workflows.
 
@@ -23,7 +21,7 @@ In GitHub Actions, cache scopes are primarily determined by the branch structure
 
 Due to the above design, if something is cached in the context of the default branch (e.g., `main`), it becomes accessible to any feature branch derived from `main`.
 
-## Recommendations
+## Recommendation
 
 1. Avoid using caching in workflows that handle sensitive operations like releases.
 2. If caching must be used:
@@ -34,37 +32,41 @@ Due to the above design, if something is cached in the context of the default br
 4. Never run untrusted code in the context of the default branch.
 5. Sign the cache value cryptographically and verify the signature before usage.
 
-## Examples
+## Example
+
+GitHub gives workflows triggered by low-trust events, such as `issue_comment`,
+`pull_request_target`, and `workflow_run`, read-only access to the default branch cache scope.
+This query therefore reports only workflows whose trigger can write to that scope.
 
 ### Incorrect Usage
 
-The following workflow is caching an attacker-controlled file (`large_file`) in the context of the default branch.
+The following write-capable manually dispatched workflow accepts a revision without validation,
+fetches files from it, and saves those files in the default branch cache. This is unsafe if an
+untrusted integration or automation can influence the dispatch input.
 
 ```yaml
 name: Vulnerable Workflow
 on:
-  issue_comment:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      head_sha:
+        required: true
 
 jobs:
-  pr-comment:
+  cache:
     permissions: read-all
     runs-on: ubuntu-latest
     steps:
-      - uses: xt0rted/pull-request-comment-branch@v2
-        id: comment-branch
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ steps.comment-branch.outputs.head_sha }}
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-      - name: Cache pip dependencies
+      - env:
+          HEAD_SHA: ${{ github.event.inputs.head_sha }}
+        run: |
+          git fetch origin "$HEAD_SHA"
+          git checkout "$HEAD_SHA"
+      - name: Cache fetched files
         uses: actions/cache@v4
-        id: cache-pip
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: ${{ runner.os }}-pip-
+          path: .
+          key: dispatched-${{ github.event.inputs.head_sha }}
 ```
 
 ### Correct Usage
@@ -93,36 +95,8 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 ```
 
-Note, that the example above doesn't allow using secrets if the Pull Request originates from a fork. In case secrets are needed, `pull_request_target` with labels as `safe to test` can be used, but the code in Pull Request must be manually reviewed before applying the label.
-
-```yaml
-name: Secure Workflow
-on:
-  pull_request_target:
-    types: [labeled]
-
-jobs:
-  pr-comment:
-    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
-    permissions: read-all
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request.head.sha}}
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        id: cache-pip
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: ${{ runner.os }}-pip-
-```
-
 ## References
 
-- [The Monsters in Your Build Cache – GitHub Actions Cache Poisoning](https://adnanthekhan.com/2024/05/06/the-monsters-in-your-build-cache-github-actions-cache-poisoning/)
-- [GitHub Actions Caching Documentation](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows)
-- [Cache Poisoning in GitHub Actions](https://scribesecurity.com/blog/github-cache-poisoning/)
+- Adnan Khan's Blog: [The Monsters in Your Build Cache – GitHub Actions Cache Poisoning](https://adnanthekhan.com/2024/05/06/the-monsters-in-your-build-cache-github-actions-cache-poisoning/).
+- GitHub Docs: [Cache access for low-trust workflow triggers](https://docs.github.com/actions/reference/workflows-and-actions/dependency-caching#cache-access-for-low-trust-workflow-triggers).
+- Scribe Security Blog: [Cache Poisoning in GitHub Actions](https://scribesecurity.com/blog/github-cache-poisoning/).

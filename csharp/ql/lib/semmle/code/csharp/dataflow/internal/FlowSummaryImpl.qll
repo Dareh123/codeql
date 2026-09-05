@@ -18,14 +18,28 @@ module Input implements InputSig<Location, DataFlowImplSpecific::CsharpDataFlow>
 
   class SummarizedCallableBase = UnboundCallable;
 
-  class SourceBase = Void;
+  predicate callableFromSource(SummarizedCallableBase c) {
+    c.fromSource() and
+    not c.getFile().isStub() and
+    not (
+      c.getFile().extractedQlTest() and
+      (
+        c.getBody() instanceof ThrowElement or
+        c.getBody().(BlockStmt).getStmt(0) instanceof ThrowElement
+      )
+    )
+  }
 
-  class SinkBase = Void;
+  class FlowSummaryCallBase extends Void {
+    Location getLocation() { none() }
+  }
+
+  DataFlowCallable getSummarizedCallableAsDataFlowCallable(SummarizedCallableBase c) {
+    result.asSummarizedCallable() = c
+  }
 
   predicate neutralElement(SummarizedCallableBase c, string kind, string provenance, boolean isExact) {
-    interpretNeutral(c, kind, provenance) and
-    // isExact is not needed for C#.
-    isExact = false
+    interpretNeutral(c, kind, provenance, isExact)
   }
 
   ArgumentPosition callbackSelfParameterPosition() { result.isDelegateSelf() }
@@ -110,7 +124,21 @@ module Input implements InputSig<Location, DataFlowImplSpecific::CsharpDataFlow>
 
 private import Make<Location, DataFlowImplSpecific::CsharpDataFlow, Input> as Impl
 
-private module TypesInput implements Impl::Private::TypesInputSig {
+private module Input2 implements Impl::Private::InputSig2 {
+  private import codeql.util.Void
+
+  class SourceSinkReportingElement extends Void {
+    Location getLocation() { none() }
+
+    DataFlowCallable getEnclosingCallable() { none() }
+
+    SourceSinkReportingElement getASuccessor(Impl::Private::SummaryComponent sc) { none() }
+  }
+}
+
+private import Impl::Private::Make2<Input2> as Impl2
+
+private module TypesInput implements Impl2::TypesInputSig {
   DataFlowType getSyntheticGlobalType(Impl::Private::SyntheticGlobal sg) {
     exists(sg) and
     result.asGvnType() = Gvn::getGlobalValueNumber(any(ObjectType t))
@@ -183,40 +211,32 @@ private module TypesInput implements Impl::Private::TypesInputSig {
     )
   }
 
-  DataFlowType getSourceType(Input::SourceBase source, Impl::Private::SummaryComponent sc) {
-    none()
-  }
-
-  DataFlowType getSinkType(Input::SinkBase sink, Impl::Private::SummaryComponent sc) { none() }
+  DataFlowType getSourceSinkType(Input2::SourceSinkReportingElement e) { none() }
 }
 
-private module StepsInput implements Impl::Private::StepsInputSig {
+private module StepsInput implements Impl2::StepsInputSig {
+  Impl2::SummaryNode getSummaryNode(Node n) { result = n.(FlowSummaryNode).getSummaryNode() }
+
   DataFlowCall getACall(Public::SummarizedCallable sc) {
     sc = viableCallable(result).asSummarizedCallable()
   }
-
-  Node getSourceNode(Input::SourceBase source, Impl::Private::SummaryComponent sc) { none() }
-
-  Node getSinkNode(Input::SinkBase sink, Impl::Private::SummaryComponent sc) { none() }
 }
 
 module SourceSinkInterpretationInput implements
   Impl::Private::External::SourceSinkInterpretationInputSig
 {
-  private import csharp as Cs
+  private import csharp as CS
 
-  class Element = Cs::Element;
+  class Element = CS::Element;
 
   predicate sourceElement(
     Element e, string output, string kind, Public::Provenance provenance, string model
   ) {
     exists(
-      string namespace, string type, boolean subtypes, string name, string signature, string ext,
-      QlBuiltins::ExtensionId madId
+      string namespace, string type, boolean subtypes, string name, string signature, string ext
     |
-      sourceModel(namespace, type, subtypes, name, signature, ext, output, kind, provenance, madId) and
-      model = "MaD:" + madId.toString() and
-      e = interpretElement(namespace, type, subtypes, name, signature, ext)
+      sourceModel(namespace, type, subtypes, name, signature, ext, output, kind, provenance, model) and
+      e = interpretElement(namespace, type, subtypes, name, signature, ext, _)
     )
   }
 
@@ -224,12 +244,34 @@ module SourceSinkInterpretationInput implements
     Element e, string input, string kind, Public::Provenance provenance, string model
   ) {
     exists(
-      string namespace, string type, boolean subtypes, string name, string signature, string ext,
-      QlBuiltins::ExtensionId madId
+      string namespace, string type, boolean subtypes, string name, string signature, string ext
     |
-      sinkModel(namespace, type, subtypes, name, signature, ext, input, kind, provenance, madId) and
-      model = "MaD:" + madId.toString() and
-      e = interpretElement(namespace, type, subtypes, name, signature, ext)
+      sinkModel(namespace, type, subtypes, name, signature, ext, input, kind, provenance, model) and
+      e = interpretElement(namespace, type, subtypes, name, signature, ext, _)
+    )
+  }
+
+  predicate barrierElement(
+    Element e, string output, string kind, Public::Provenance provenance, string model
+  ) {
+    exists(
+      string namespace, string type, boolean subtypes, string name, string signature, string ext
+    |
+      barrierModel(namespace, type, subtypes, name, signature, ext, output, kind, provenance, model) and
+      e = interpretElement(namespace, type, subtypes, name, signature, ext, _)
+    )
+  }
+
+  predicate barrierGuardElement(
+    Element e, string input, Public::AcceptingValue acceptingValue, string kind,
+    Public::Provenance provenance, string model
+  ) {
+    exists(
+      string namespace, string type, boolean subtypes, string name, string signature, string ext
+    |
+      barrierGuardModel(namespace, type, subtypes, name, signature, ext, input, acceptingValue,
+        kind, provenance, model) and
+      e = interpretElement(namespace, type, subtypes, name, signature, ext, _)
     )
   }
 
@@ -301,9 +343,10 @@ module SourceSinkInterpretationInput implements
 
 module Private {
   import Impl::Private
-  import Impl::Private::Types<TypesInput>
+  import Impl2
+  import Types<TypesInput>
 
-  module Steps = Impl::Private::Steps<StepsInput>;
+  module Steps = Impl2::Steps<StepsInput>;
 
   module External {
     import Impl::Private::External
@@ -426,13 +469,14 @@ private class SummarizedCallableWithCallback extends Public::SummarizedCallable 
   SummarizedCallableWithCallback() { mayInvokeCallback(this, pos) }
 
   override predicate propagatesFlow(
-    string input, string output, boolean preservesValue, string model
+    string input, string output, boolean preservesValue, Public::Provenance provenance,
+    boolean isExact, string model
   ) {
     input = "Argument[" + pos + "]" and
     output = "Argument[" + pos + "].Parameter[delegate-self]" and
     preservesValue = true and
+    provenance = "hq-generated" and
+    isExact = true and
     model = "heuristic-callback"
   }
-
-  override predicate hasProvenance(Public::Provenance provenance) { provenance = "hq-generated" }
 }

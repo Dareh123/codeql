@@ -5,7 +5,11 @@
  */
 
 import javascript
+private import semmle.javascript.dataflow.internal.sharedlib.DataFlowArg
 private import codeql.threatmodels.ThreatModels
+private import codeql.concepts.ConceptsShared
+
+private module ConceptsShared = ConceptsMake<Location, JSDataFlow>;
 
 /**
  * A data flow source, for a specific threat-model.
@@ -206,17 +210,9 @@ abstract class PersistentWriteAccess extends DataFlow::Node {
  * Provides models for cryptographic things.
  */
 module Cryptography {
-  private import semmle.javascript.internal.ConceptsShared::Cryptography as SC
+  private import ConceptsShared::Cryptography as SC
 
-  /**
-   * A data-flow node that is an application of a cryptographic algorithm. For example,
-   * encryption, decryption, signature-validation.
-   *
-   * Extend this class to refine existing API models. If you want to model new APIs,
-   * extend `CryptographicOperation::Range` instead.
-   */
-  class CryptographicOperation extends SC::CryptographicOperation instanceof CryptographicOperation::Range
-  { }
+  class CryptographicOperation = SC::CryptographicOperation;
 
   class EncryptionAlgorithm = SC::EncryptionAlgorithm;
 
@@ -229,4 +225,29 @@ module Cryptography {
   class BlockMode = SC::BlockMode;
 
   class CryptographicAlgorithm = SC::CryptographicAlgorithm;
+}
+
+/**
+ * A data-flow node that prompts an AI model.
+ *
+ * Extend this class to refine existing API models. If you want to model new APIs,
+ * extend `AIPrompt::Range` instead.
+ */
+class AIPrompt extends DataFlow::Node instanceof AIPrompt::Range {
+  /** Gets an input that is used as AI prompt. */
+  DataFlow::Node getAPrompt() { result = super.getAPrompt() }
+}
+
+/** Provides a class for modeling new AI prompting mechanisms. */
+module AIPrompt {
+  /**
+   * A data-flow node that prompts an AI model.
+   *
+   * Extend this class to model new APIs. If you want to refine existing API models,
+   * extend `AIPrompt` instead.
+   */
+  abstract class Range extends DataFlow::Node {
+    /** Gets an input that is used as AI prompt. */
+    abstract DataFlow::Node getAPrompt();
+  }
 }

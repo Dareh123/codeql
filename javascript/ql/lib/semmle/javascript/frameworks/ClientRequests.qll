@@ -198,6 +198,7 @@ module ClientRequest {
   private string urlPropertyName() { result = "url" or result = "uri" }
 
   /** An API entry-point for the global variable `axios`. */
+  overlay[local?]
   private class AxiosGlobalEntryPoint extends API::EntryPoint {
     AxiosGlobalEntryPoint() { this = "axiosGlobal" }
 
@@ -1013,6 +1014,18 @@ module ClientRequest {
     override string getThreatModel() { result = "response" }
 
     override string getSourceType() { result = "HTTP response data" }
+  }
+
+  /**
+   * A taint step from promise-wrapped response data to the value that the promise resolves to.
+   */
+  private class ClientRequestResponsePromiseStep extends TaintTracking::SharedTaintStep {
+    override predicate promiseStep(DataFlow::Node node1, DataFlow::Node node2) {
+      exists(ClientRequest r |
+        r.getAResponseDataNode(_, true).getALocalSource().flowsTo(node1) and
+        PromiseFlow::loadStep(node1, node2, Promises::valueProp())
+      )
+    }
   }
 
   /**

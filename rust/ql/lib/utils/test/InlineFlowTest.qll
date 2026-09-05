@@ -18,26 +18,48 @@ private import internal.InlineExpectationsTestImpl as InlineExpectationsTestImpl
  * representation of the path has `name` as a prefix.
  */
 bindingset[name]
-private predicate callTargetName(CallExprCfgNode call, string name) {
-  call.getFunction().(PathExprCfgNode).toString().matches(name + "%")
+private predicate callTargetName(CallExpr call, string name) {
+  call.getFunction().(PathExpr).getPath().getText().matches(name + "%")
 }
 
 private module FlowTestImpl implements InputSig<Location, RustDataFlow> {
   predicate defaultSource(DataFlow::Node source) { callTargetName(source.asExpr(), "source") }
 
   predicate defaultSink(DataFlow::Node sink) {
-    any(CallExprCfgNode call | callTargetName(call, "sink")).getArgument(_) = sink.asExpr()
+    any(CallExpr call | callTargetName(call, "sink")).getASyntacticArgument() = sink.asExpr()
+  }
+
+  private string getSummaryNodeArgString(AstNode n) {
+    exists(Call call |
+      n = call
+      or
+      not n instanceof Call and
+      n = call.getASyntacticArgument() // `n` is a callback
+    |
+      result = call.getPositionalArgument(0).toString()
+    )
+    or
+    result = n.(Call).getPositionalArgument(0).toString()
+    or
+    result = n.(Param).getPat().(IdentPat).getName().getText()
   }
 
   private string getSourceArgString(DataFlow::Node src) {
     defaultSource(src) and
-    result = src.asExpr().(CallExprCfgNode).getArgument(0).toString()
-    or
-    sourceNode(src, _) and
-    exists(CallExprBase call |
-      call = src.(Node::FlowSummaryNode).getSourceElement().getCall() and
-      result = call.getArgList().getArg(0).toString()
+    exists(Expr arg | arg = src.asExpr().(Call).getPositionalArgument(0) |
+      not arg instanceof ArrayListExpr and
+      result = arg.toString()
+      or
+      result = arg.(ArrayListExpr).getExpr(0).toString()
     )
+    or
+    exists(AstNode n |
+      sourceNode(src, _) and
+      n = src.(Node::FlowSummaryNode).getSummaryNode().getSourceSinkReportingElement() and
+      result = getSummaryNodeArgString(n)
+    ) and
+    // Don't use the result if it contains spaces
+    not result.matches("% %")
   }
 
   bindingset[src, sink]

@@ -14,6 +14,7 @@ private import TranslatedFunction
 private import TranslatedInitialization
 private import TranslatedStmt
 private import TranslatedGlobalVar
+private import TranslatedNonStaticDataMember
 private import IRConstruction
 import TranslatedCall
 
@@ -138,6 +139,8 @@ abstract class TranslatedExpr extends TranslatedElement {
     result = getTranslatedFunction(getEnclosingFunction(expr))
     or
     result = getTranslatedVarInit(getEnclosingVariable(expr))
+    or
+    result = getTranslatedFieldInit(getEnclosingVariable(expr))
   }
 }
 
@@ -153,7 +156,10 @@ Declaration getEnclosingDeclaration0(Expr e) {
     i.getExpr().getFullyConverted() = e and
     v = i.getDeclaration()
   |
-    if v instanceof StaticInitializedStaticLocalVariable or v instanceof GlobalOrNamespaceVariable
+    if
+      v instanceof StaticInitializedStaticLocalVariable or
+      v instanceof GlobalOrNamespaceVariable or
+      v instanceof Field
     then result = v
     else result = e.getEnclosingDeclaration()
   )
@@ -173,7 +179,10 @@ Variable getEnclosingVariable0(Expr e) {
     i.getExpr().getFullyConverted() = e and
     v = i.getDeclaration()
   |
-    if v instanceof StaticInitializedStaticLocalVariable or v instanceof GlobalOrNamespaceVariable
+    if
+      v instanceof StaticInitializedStaticLocalVariable or
+      v instanceof GlobalOrNamespaceVariable or
+      v instanceof Field
     then result = v
     else result = e.getEnclosingVariable()
   )
@@ -187,7 +196,7 @@ Variable getEnclosingVariable(Expr e) {
 }
 
 /**
- * The IR translation of the "core"  part of an expression. This is the part of
+ * The IR translation of the "core" part of an expression. This is the part of
  * the expression that produces the result value of the expression, before any
  * lvalue-to-rvalue conversion on the result. Every expression has a single
  * `TranslatedCoreExpr`.
@@ -216,7 +225,8 @@ abstract class TranslatedCoreExpr extends TranslatedExpr {
     not hasTranslatedLoad(expr) and
     not hasTranslatedSyntheticTemporaryObject(expr) and
     // If there's a result copy, then this expression's result is the copy.
-    not exprNeedsCopyIfNotLoaded(expr)
+    not exprNeedsCopyIfNotLoaded(expr) and
+    not hasTranslatedSyntheticBoolToIntConversion(expr)
   }
 }
 
@@ -358,11 +368,12 @@ class TranslatedConditionValue extends TranslatedCoreExpr, ConditionContext,
 }
 
 /**
- * The IR translation of a node synthesized to adjust the value category of its operand.
+ * The IR translation of a node synthesized to adjust the value category or type of its operand.
  * One of:
  * - `TranslatedLoad` - Convert from glvalue to prvalue by loading from the location.
  * - `TranslatedSyntheticTemporaryObject` - Convert from prvalue to glvalue by storing to a
  *   temporary variable.
+ * - `TranslatedSyntheticBoolToIntConversion` - Convert a prvalue Boolean to a prvalue integer.
  */
 abstract class TranslatedValueCategoryAdjustment extends TranslatedExpr {
   final override Instruction getFirstInstruction(EdgeKind kind) {
@@ -510,6 +521,45 @@ class TranslatedSyntheticTemporaryObject extends TranslatedValueCategoryAdjustme
   final override IRVariable getInstructionVariable(InstructionTag tag) {
     tag = InitializerVariableAddressTag() and
     result = getIRTempVariable(expr, TempObjectTempVar())
+  }
+}
+
+class TranslatedSyntheticBoolToIntConversion extends TranslatedValueCategoryAdjustment,
+  TTranslatedSyntheticBoolToIntConversion
+{
+  TranslatedSyntheticBoolToIntConversion() { this = TTranslatedSyntheticBoolToIntConversion(expr) }
+
+  override string toString() { result = "Bool-to-int conversion of " + expr.toString() }
+
+  override predicate hasInstruction(Opcode opcode, InstructionTag tag, CppType resultType) {
+    opcode instanceof Opcode::Convert and
+    tag = BoolToIntConversionTag() and
+    resultType = getIntType()
+  }
+
+  override predicate isResultGLValue() { none() }
+
+  override Instruction getInstructionSuccessorInternal(InstructionTag tag, EdgeKind kind) {
+    tag = BoolToIntConversionTag() and
+    result = this.getParent().getChildSuccessor(this, kind)
+  }
+
+  override Instruction getALastInstructionInternal() {
+    result = this.getInstruction(BoolToIntConversionTag())
+  }
+
+  override Instruction getChildSuccessorInternal(TranslatedElement child, EdgeKind kind) {
+    child = this.getOperand() and
+    result = this.getInstruction(BoolToIntConversionTag()) and
+    kind instanceof GotoEdge
+  }
+
+  override Instruction getResult() { result = this.getInstruction(BoolToIntConversionTag()) }
+
+  override Instruction getInstructionRegisterOperand(InstructionTag tag, OperandTag operandTag) {
+    tag = BoolToIntConversionTag() and
+    operandTag instanceof UnaryOperandTag and
+    result = this.getOperand().getResult()
   }
 }
 
@@ -783,6 +833,46 @@ class TranslatedPostfixCrementOperation extends TranslatedCrementOperation {
   override PostfixCrementOperation expr;
 
   override Instruction getResult() { result = this.getLoadedOperand().getResult() }
+}
+
+class TranslatedParamAccessForType extends TranslatedNonConstantExpr {
+  override ParamAccessForType expr;
+
+  TranslatedParamAccessForType() {
+    // Currently only needed for this parameter accesses.
+    expr.isThisAccess()
+  }
+
+  final override Instruction getFirstInstruction(EdgeKind kind) {
+    result = this.getInstruction(OnlyInstructionTag()) and
+    kind instanceof GotoEdge
+  }
+
+  override Instruction getALastInstructionInternal() {
+    result = this.getInstruction(OnlyInstructionTag())
+  }
+
+  final override TranslatedElement getChildInternal(int id) { none() }
+
+  override Instruction getInstructionSuccessorInternal(InstructionTag tag, EdgeKind kind) {
+    tag = OnlyInstructionTag() and
+    result = this.getParent().getChildSuccessor(this, kind)
+  }
+
+  override Instruction getResult() { result = this.getInstruction(OnlyInstructionTag()) }
+
+  override predicate hasInstruction(Opcode opcode, InstructionTag tag, CppType resultType) {
+    tag = OnlyInstructionTag() and
+    opcode instanceof Opcode::CopyValue and
+    resultType = getTypeForPRValue(expr.getType())
+  }
+
+  override Instruction getInstructionRegisterOperand(InstructionTag tag, OperandTag operandTag) {
+    tag = OnlyInstructionTag() and
+    operandTag instanceof UnaryOperandTag and
+    result =
+      this.getEnclosingFunction().(TranslatedNonStaticDataMemberVarInit).getLoadThisInstruction()
+  }
 }
 
 /**
@@ -1174,7 +1264,7 @@ class TranslatedFunctionAccess extends TranslatedNonConstantExpr {
     resultType = this.getResultType()
   }
 
-  override Function getInstructionFunction(InstructionTag tag) {
+  override Declaration getInstructionFunction(InstructionTag tag) {
     tag = OnlyInstructionTag() and
     result = expr.getTarget()
   }
@@ -1794,18 +1884,9 @@ private Opcode binaryArithmeticOpcode(BinaryArithmeticOperation expr) {
   expr instanceof PointerDiffExpr and result instanceof Opcode::PointerDiff
 }
 
-private Opcode comparisonOpcode(ComparisonOperation expr) {
-  expr instanceof EQExpr and result instanceof Opcode::CompareEQ
-  or
-  expr instanceof NEExpr and result instanceof Opcode::CompareNE
-  or
-  expr instanceof LTExpr and result instanceof Opcode::CompareLT
-  or
-  expr instanceof GTExpr and result instanceof Opcode::CompareGT
-  or
-  expr instanceof LEExpr and result instanceof Opcode::CompareLE
-  or
-  expr instanceof GEExpr and result instanceof Opcode::CompareGE
+private Opcode spaceShipOpcode(SpaceshipExpr expr) {
+  exists(expr) and
+  result instanceof Opcode::Spaceship
 }
 
 /**
@@ -1867,7 +1948,8 @@ class TranslatedBinaryOperation extends TranslatedSingleInstructionExpr {
   override Opcode getOpcode() {
     result = binaryArithmeticOpcode(expr) or
     result = binaryBitwiseOpcode(expr) or
-    result = comparisonOpcode(expr)
+    result = comparisonOpcode(expr) or
+    result = spaceShipOpcode(expr)
   }
 
   override Type getExprType() {
@@ -2465,7 +2547,7 @@ class TranslatedAllocatorCall extends TTranslatedAllocatorCall, TranslatedDirect
     any()
   }
 
-  override Function getInstructionFunction(InstructionTag tag) {
+  override Declaration getInstructionFunction(InstructionTag tag) {
     tag = CallTargetTag() and result = expr.getAllocator()
   }
 
@@ -2548,7 +2630,7 @@ class TranslatedDeleteOrDeleteArrayExpr extends TranslatedNonConstantExpr, Trans
     result = this.getFirstArgumentOrCallInstruction(kind)
   }
 
-  override Function getInstructionFunction(InstructionTag tag) {
+  override Declaration getInstructionFunction(InstructionTag tag) {
     tag = CallTargetTag() and result = expr.getDeallocator()
   }
 
@@ -2646,7 +2728,7 @@ class TranslatedDestructorFieldDestruction extends TranslatedNonConstantExpr, St
   final override Instruction getInstructionRegisterOperand(InstructionTag tag, OperandTag operandTag) {
     tag = OnlyInstructionTag() and
     operandTag instanceof UnaryOperandTag and
-    result = getTranslatedFunction(getEnclosingFunction(expr)).getInitializeThisInstruction()
+    result = getTranslatedFunction(getEnclosingFunction(expr)).getLoadThisInstruction()
   }
 
   final override Field getInstructionField(InstructionTag tag) {
@@ -3851,7 +3933,7 @@ class TranslatedNewExpr extends TranslatedNewOrNewArrayExpr {
   final override Type getTargetType() { result = expr.getAllocatedType().getUnspecifiedType() }
 
   final override TranslatedInitialization getInitialization() {
-    result = getTranslatedInitialization(expr.getInitializer())
+    result = getTranslatedInitialization(expr.getInitializer().getFullyConverted())
   }
 }
 
@@ -4061,6 +4143,155 @@ class TranslatedStmtExpr extends TranslatedNonConstantExpr {
   TranslatedStmt getStmt() { result = getTranslatedStmt(expr.getStmt()) }
 }
 
+private VlaDeclStmt getVlaDeclStmt(Expr expr, int pointerDerefCount) {
+  expr.(VariableAccess).getTarget() = result.getVariable() and
+  pointerDerefCount = 0
+  or
+  not expr.(PointerDereferenceExpr).getOperand() instanceof AddressOfExpr and
+  result = getVlaDeclStmt(expr.(PointerDereferenceExpr).getOperand(), pointerDerefCount - 1)
+  or
+  // Skip sequences of the form `*&...`
+  result =
+    getVlaDeclStmt(expr.(PointerDereferenceExpr).getOperand().(AddressOfExpr).getOperand(),
+      pointerDerefCount)
+  or
+  result = getVlaDeclStmt(expr.(ArrayExpr).getArrayBase(), pointerDerefCount - 1)
+}
+
+/**
+ * The IR translation of `SizeofExprOperator` when its result is non-constant, i.e.,
+ * when the operand expression refers to a variable length array.
+ */
+class TranslatedSizeofExpr extends TranslatedNonConstantExpr {
+  override SizeofExprOperator expr;
+  VlaDeclStmt vlaDeclStmt;
+  int vlaDimensions;
+  int pointerDerefCount;
+
+  TranslatedSizeofExpr() {
+    vlaDeclStmt = getVlaDeclStmt(expr.getExprOperand(), pointerDerefCount) and
+    vlaDimensions = vlaDeclStmt.getTransitiveNumberOfVlaDimensionStmts() and
+    pointerDerefCount < vlaDimensions
+  }
+
+  final override Instruction getFirstInstruction(EdgeKind kind) {
+    result = this.getInstruction(SizeofVlaBaseSizeTag()) and
+    kind instanceof GotoEdge
+  }
+
+  override Instruction getALastInstructionInternal() {
+    result = this.getInstruction(SizeofVlaDimensionTag(vlaDimensions - 1))
+  }
+
+  final override TranslatedElement getChildInternal(int id) { none() }
+
+  final override predicate hasInstruction(Opcode opcode, InstructionTag tag, CppType resultType) {
+    opcode instanceof Opcode::Constant and
+    tag = SizeofVlaBaseSizeTag() and
+    resultType = this.getResultType()
+    or
+    exists(int n, Type dimType |
+      pointerDerefCount <= n and
+      n < vlaDimensions and
+      dimType = this.getDimensionExpr(n).getUnderlyingType() and
+      tag = SizeofVlaConversionTag(n)
+    |
+      (
+        expr.getUnderlyingType() = dimType and
+        opcode instanceof Opcode::CopyValue
+        or
+        not expr.getUnderlyingType() = dimType and
+        opcode instanceof Opcode::Convert
+      )
+    ) and
+    resultType = this.getResultType()
+    or
+    opcode instanceof Opcode::Mul and
+    exists(int n | pointerDerefCount <= n and n < vlaDimensions | tag = SizeofVlaDimensionTag(n)) and
+    resultType = this.getResultType()
+  }
+
+  final override Instruction getInstructionSuccessorInternal(InstructionTag tag, EdgeKind kind) {
+    tag = SizeofVlaBaseSizeTag() and
+    result = this.getInstruction(SizeofVlaConversionTag(pointerDerefCount)) and
+    kind instanceof GotoEdge
+    or
+    exists(int n | pointerDerefCount <= n and n < vlaDimensions |
+      tag = SizeofVlaConversionTag(n) and
+      result = this.getInstruction(SizeofVlaDimensionTag(n))
+    ) and
+    kind instanceof GotoEdge
+    or
+    exists(int n | pointerDerefCount <= n and n < vlaDimensions - 1 |
+      tag = SizeofVlaDimensionTag(n) and
+      result = this.getInstruction(SizeofVlaConversionTag(n + 1))
+    ) and
+    kind instanceof GotoEdge
+    or
+    tag = SizeofVlaDimensionTag(vlaDimensions - 1) and
+    result = this.getParent().getChildSuccessor(this, kind)
+  }
+
+  override string getInstructionConstantValue(InstructionTag tag) {
+    tag = SizeofVlaBaseSizeTag() and
+    result = this.getBaseType(vlaDeclStmt).getSize().toString()
+  }
+
+  private Type getBaseType(VlaDeclStmt v) {
+    not exists(v.getParentVlaDecl()) and
+    (
+      result =
+        this.getBaseType(v.getVariable().getUnderlyingType(), v.getNumberOfVlaDimensionStmts())
+      or
+      result = this.getBaseType(v.getType().getUnderlyingType(), v.getNumberOfVlaDimensionStmts())
+    )
+    or
+    result = this.getBaseType(v.getParentVlaDecl())
+  }
+
+  private Type getBaseType(Type type, int n) {
+    n = 0 and
+    result = type
+    or
+    result = this.getBaseType(type.(DerivedType).getBaseType(), n - 1)
+  }
+
+  override Instruction getInstructionRegisterOperand(InstructionTag tag, OperandTag operandTag) {
+    exists(int n | pointerDerefCount <= n and n < vlaDimensions |
+      tag = SizeofVlaConversionTag(n) and
+      (
+        operandTag instanceof UnaryOperandTag and
+        result = getTranslatedExpr(this.getDimensionExpr(n)).getResult()
+      )
+    )
+    or
+    exists(int n | pointerDerefCount <= n and n < vlaDimensions |
+      tag = SizeofVlaDimensionTag(n) and
+      (
+        operandTag instanceof LeftOperandTag and
+        (
+          n - 1 >= pointerDerefCount and
+          result = this.getInstruction(SizeofVlaDimensionTag(n - 1))
+          or
+          n - 1 < pointerDerefCount and
+          result = this.getInstruction(SizeofVlaBaseSizeTag())
+        )
+        or
+        operandTag instanceof RightOperandTag and
+        result = this.getInstruction(SizeofVlaConversionTag(n))
+      )
+    )
+  }
+
+  private Expr getDimensionExpr(int n) {
+    result = vlaDeclStmt.getTransitiveVlaDimensionStmt(n).getDimensionExpr().getFullyConverted()
+  }
+
+  final override Instruction getResult() {
+    result = this.getInstruction(SizeofVlaDimensionTag(vlaDimensions - 1))
+  }
+}
+
 class TranslatedErrorExpr extends TranslatedSingleInstructionExpr {
   override ErrorExpr expr;
 
@@ -4146,7 +4377,8 @@ predicate exprNeedsCopyIfNotLoaded(Expr expr) {
 private predicate exprImmediatelyDiscarded(Expr expr) {
   exists(ExprStmt s |
     s = expr.getParent() and
-    not exists(StmtExpr se | s = se.getStmt().(BlockStmt).getLastStmt())
+    not exists(StmtExpr se | s = se.getStmt().(BlockStmt).getLastStmt()) and
+    not exists(expr.getConversion())
   )
   or
   exists(CommaExpr c | c.getLeftOperand() = expr)
@@ -4182,5 +4414,54 @@ class TranslatedAssumeExpr extends TranslatedSingleInstructionExpr {
 
   final override Instruction getChildSuccessorInternal(TranslatedElement child, EdgeKind kind) {
     none()
+  }
+}
+
+class TranslatedTypeidExpr extends TranslatedSingleInstructionExpr {
+  override TypeidOperator expr;
+
+  final override Opcode getOpcode() {
+    exists(this.getOperand()) and
+    result instanceof Opcode::TypeidExpr
+    or
+    not exists(this.getOperand()) and
+    result instanceof Opcode::TypeidType
+  }
+
+  final override Instruction getFirstInstruction(EdgeKind kind) {
+    result = this.getOperand().getFirstInstruction(kind)
+    or
+    not exists(this.getOperand()) and
+    result = this.getInstruction(OnlyInstructionTag()) and
+    kind instanceof GotoEdge
+  }
+
+  override Instruction getALastInstructionInternal() {
+    result = this.getInstruction(OnlyInstructionTag())
+  }
+
+  final override TranslatedElement getChildInternal(int id) {
+    id = 0 and result = this.getOperand()
+  }
+
+  final override Instruction getInstructionSuccessorInternal(InstructionTag tag, EdgeKind kind) {
+    tag = OnlyInstructionTag() and
+    result = this.getParent().getChildSuccessor(this, kind)
+  }
+
+  final override Instruction getChildSuccessorInternal(TranslatedElement child, EdgeKind kind) {
+    child = this.getOperand() and
+    result = this.getInstruction(OnlyInstructionTag()) and
+    kind instanceof GotoEdge
+  }
+
+  final override Instruction getInstructionRegisterOperand(InstructionTag tag, OperandTag operandTag) {
+    tag = OnlyInstructionTag() and
+    result = this.getOperand().getResult() and
+    operandTag instanceof UnaryOperandTag
+  }
+
+  private TranslatedExpr getOperand() {
+    result = getTranslatedExpr(expr.getExpr().getFullyConverted())
   }
 }

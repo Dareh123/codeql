@@ -149,6 +149,8 @@ impl<T> MyOption<T> {
 
     // summary=<test::option::MyOption>::map;Argument[0].ReturnValue;ReturnValue.Field[test::option::MyOption::MySome(0)];value;dfc-generated
     // summary=<test::option::MyOption>::map;Argument[self].Field[test::option::MyOption::MySome(0)];Argument[0].Parameter[0];value;dfc-generated
+    // The spurious model below happens because `f` incorrectly resolves to the closure passed in from `as_deref`
+    // SPURIOUS-summary=<test::option::MyOption>::map;Argument[self].Field[test::option::MyOption::MySome(0)].Reference;ReturnValue.Field[test::option::MyOption::MySome(0)].Reference;taint;dfc-generated
     pub fn map<U, F>(self, f: F) -> MyOption<U>
     where
         F: FnOnce(T) -> U,
@@ -160,7 +162,7 @@ impl<T> MyOption<T> {
     }
 
     // summary=<test::option::MyOption>::inspect;Argument[self];ReturnValue;value;dfc-generated
-    // MISSING: Due to `ref` pattern.
+    // summary=<test::option::MyOption>::inspect;Argument[self].Field[test::option::MyOption::MySome(0)];Argument[0].Parameter[0].Reference;value;dfc-generated
     pub fn inspect<F: FnOnce(&T)>(self, f: F) -> Self {
         if let MySome(ref x) = self {
             f(x);
@@ -217,7 +219,7 @@ impl<T> MyOption<T> {
         }
     }
 
-    // MISSING: `Deref` trait
+    // summary=<test::option::MyOption>::as_deref;Argument[self].Reference.Field[test::option::MyOption::MySome(0)];ReturnValue.Field[test::option::MyOption::MySome(0)].Reference;taint;dfc-generated
     pub fn as_deref(&self) -> MyOption<&T::Target>
     where
         T: Deref,
@@ -253,7 +255,8 @@ impl<T> MyOption<T> {
         }
     }
 
-    // MISSING: Reference passed to predicate
+    // summary=<test::option::MyOption>::filter;Argument[self].Field[test::option::MyOption::MySome(0)];Argument[0].Parameter[0].Reference;value;dfc-generated
+    // summary=<test::option::MyOption>::filter;Argument[self].Field[test::option::MyOption::MySome(0)];ReturnValue.Field[test::option::MyOption::MySome(0)];value;dfc-generated
     pub fn filter<P>(self, predicate: P) -> Self
     where
         P: FnOnce(&T) -> bool,
@@ -324,7 +327,8 @@ impl<T> MyOption<T> {
     }
 
     // summary=<test::option::MyOption>::get_or_insert_with;Argument[self].Reference.Field[test::option::MyOption::MySome(0)];ReturnValue.Reference;value;dfc-generated
-    // MISSING: Mutating `self` parameter.
+    // summary=<test::option::MyOption>::get_or_insert_with;Argument[0].ReturnValue;Argument[self].Reference.Field[test::option::MyOption::MySome(0)];value;dfc-generated
+    // summary=<test::option::MyOption>::get_or_insert_with;Argument[0].ReturnValue;ReturnValue.Reference;value;dfc-generated
     pub fn get_or_insert_with<F>(&mut self, f: F) -> &mut T
     where
         F: FnOnce() -> T,
@@ -414,7 +418,7 @@ impl<T> MyOption<&T> {
         }
     }
 
-    // MISSING: summary=<test::option::MyOption>::cloned;Argument[self].Field[test::option::MyOption::MySome(0)].Reference;ReturnValue.Field[test::option::MyOption::MySome(0)];value;dfc-generated
+    // summary=<test::option::MyOption>::cloned;Argument[self].Field[test::option::MyOption::MySome(0)].Reference;ReturnValue.Field[test::option::MyOption::MySome(0)];value;dfc-generated
     pub fn cloned(self) -> MyOption<T>
     where
         T: Clone,
@@ -438,7 +442,7 @@ impl<T> MyOption<&mut T> {
         }
     }
 
-    // MISSING: summary=<test::option::MyOption>::cloned;Argument[self].Field[test::option::MyOption::MySome(0)].Reference;ReturnValue.Field[test::option::MyOption::MySome(0)];value;dfc-generated
+    // summary=<test::option::MyOption>::cloned;Argument[self].Field[test::option::MyOption::MySome(0)].Reference;ReturnValue.Field[test::option::MyOption::MySome(0)];value;dfc-generated
     pub fn cloned(self) -> MyOption<T>
     where
         T: Clone,

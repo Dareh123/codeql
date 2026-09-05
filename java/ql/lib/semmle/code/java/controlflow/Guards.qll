@@ -2,12 +2,15 @@
  * Provides classes and predicates for reasoning about guards and the control
  * flow elements controlled by those guards.
  */
+overlay[local?]
+module;
 
 import java
 private import semmle.code.java.controlflow.Dominance
 private import semmle.code.java.controlflow.internal.Preconditions
 private import semmle.code.java.controlflow.internal.SwitchCases
 private import codeql.controlflow.Guards as SharedGuards
+private import codeql.controlflow.SuccessorType
 
 /**
  * A basic block that terminates in a condition, splitting the subsequent control flow.
@@ -73,80 +76,12 @@ class ConditionBlock extends BasicBlock {
   }
 }
 
-// Join order engineering -- first determine the switch block and the case indices required, then retrieve them.
-bindingset[switch, i]
-pragma[inline_late]
-private predicate isNthCaseOf(SwitchBlock switch, SwitchCase c, int i) { c.isNthCaseOf(switch, i) }
-
-/**
- * Gets a switch case >= pred, up to but not including `pred`'s successor pattern case,
- * where `pred` is declared on `switch`.
- */
-private SwitchCase getACaseUpToNextPattern(PatternCase pred, SwitchBlock switch) {
-  // Note we do include `case null, default` (as well as plain old `default`) here.
-  not result.(ConstCase).getValue(_) instanceof NullLiteral and
-  exists(int maxCaseIndex |
-    switch = pred.getParent() and
-    if exists(getNextPatternCase(pred))
-    then maxCaseIndex = getNextPatternCase(pred).getCaseIndex() - 1
-    else maxCaseIndex = lastCaseIndex(switch)
-  |
-    isNthCaseOf(switch, result, [pred.getCaseIndex() .. maxCaseIndex])
-  )
-}
-
-/**
- * Gets the closest pattern case preceding `case`, including `case` itself, if any.
- */
-private PatternCase getClosestPrecedingPatternCase(SwitchCase case) {
-  case = getACaseUpToNextPattern(result, _)
-}
-
-/**
- * Holds if `pred` is a control-flow predecessor of switch case `sc` that is not a
- * fall-through from a previous case.
- *
- * For classic switches that means flow from the selector expression; for switches
- * involving pattern cases it can also mean flow from a previous pattern case's type
- * test or guard failing and proceeding to then consider subsequent cases.
- */
-private predicate isNonFallThroughPredecessor(SwitchCase sc, ControlFlowNode pred) {
-  pred = sc.getControlFlowNode().getAPredecessor() and
-  (
-    pred.asExpr().getParent*() = sc.getSelectorExpr()
-    or
-    // Ambiguous: in the case of `case String _ when x: case "SomeConstant":`, the guard `x`
-    // passing edge will fall through into the constant case, and the guard failing edge
-    // will test if the selector equals `"SomeConstant"` and if so branch to the same
-    // case statement. Therefore don't label this a non-fall-through predecessor.
-    exists(PatternCase previousPatternCase |
-      previousPatternCase = getClosestPrecedingPatternCase(sc)
-    |
-      pred.asExpr().getParent*() = previousPatternCase.getGuard() and
-      // Check there is any statement in between the previous pattern case and this one,
-      // or the case is a rule, so there is no chance of a fall-through.
-      (
-        previousPatternCase.isRule() or
-        not previousPatternCase.getIndex() = sc.getIndex() - 1
-      )
-    )
-    or
-    // Unambigious: on the test-passing edge there must be at least one intervening
-    // declaration node, including anonymous `_` declarations.
-    pred.asStmt() = getClosestPrecedingPatternCase(sc)
-  )
-}
-
-private module GuardsInput implements SharedGuards::InputSig<Location> {
+private module GuardsInput implements SharedGuards::InputSig<Location, ControlFlowNode, BasicBlock> {
   private import java as J
+  private import semmle.code.java.dataflow.internal.BaseSSA as Base
   private import semmle.code.java.dataflow.NullGuards as NullGuards
-  import SuccessorType
 
-  class ControlFlowNode = J::ControlFlowNode;
-
-  class BasicBlock = J::BasicBlock;
-
-  predicate dominatingEdge(BasicBlock bb1, BasicBlock bb2) { J::dominatingEdge(bb1, bb2) }
+  class NormalExitNode = ControlFlow::NormalExitNode;
 
   class AstNode = ExprParent;
 
@@ -212,6 +147,12 @@ private module GuardsInput implements SharedGuards::InputSig<Location> {
         f.isFinal() and
         f.getInitializer() = NullGuards::baseNotNullExpr()
       )
+      or
+      exists(CatchClause cc, LocalVariableDeclExpr decl, Base::SsaExplicitWrite v |
+        decl = cc.getVariable() and
+        decl = v.getDefiningExpr() and
+        this = v.getARead()
+      )
     }
   }
 
@@ -227,39 +168,24 @@ private module GuardsInput implements SharedGuards::InputSig<Location> {
       )
     }
 
-    private predicate hasPatternCaseMatchEdge(BasicBlock bb1, BasicBlock bb2, boolean isMatch) {
-      exists(ConditionNode patterncase |
-        this instanceof PatternCase and
-        patterncase = super.getControlFlowNode() and
-        bb1.getLastNode() = patterncase and
-        bb2.getFirstNode() = patterncase.getABranchSuccessor(isMatch)
-      )
+    private ControlFlowNode getPatternNode() {
+      result = this.(J::PatternCase).getUniquePattern().getControlFlowNode()
+      or
+      result = unique(Expr e | this.(J::ConstCase).getValue(_) = e).getControlFlowNode()
     }
 
     predicate matchEdge(BasicBlock bb1, BasicBlock bb2) {
-      exists(ControlFlowNode pred |
-        // Pattern cases are handled as ConditionBlocks.
-        not this instanceof PatternCase and
-        bb2.getFirstNode() = super.getControlFlowNode() and
-        isNonFallThroughPredecessor(this, pred) and
-        bb1 = pred.getBasicBlock()
-      )
-      or
-      this.hasPatternCaseMatchEdge(bb1, bb2, true)
+      bb1.getASuccessor(any(MatchingSuccessor s | s.getValue() = true)) = bb2 and
+      bb1.getLastNode() = this.getPatternNode()
     }
 
     predicate nonMatchEdge(BasicBlock bb1, BasicBlock bb2) {
-      this.hasPatternCaseMatchEdge(bb1, bb2, false)
+      bb1.getASuccessor(any(MatchingSuccessor s | s.getValue() = false)) = bb2 and
+      bb1.getLastNode() = this.getPatternNode()
     }
   }
 
-  abstract private class BinExpr extends Expr {
-    Expr getAnOperand() {
-      result = this.(BinaryExpr).getAnOperand() or result = this.(AssignOp).getSource()
-    }
-  }
-
-  class AndExpr extends BinExpr {
+  class AndExpr extends BinaryExpr {
     AndExpr() {
       this instanceof AndBitwiseExpr or
       this instanceof AndLogicalExpr or
@@ -267,7 +193,7 @@ private module GuardsInput implements SharedGuards::InputSig<Location> {
     }
   }
 
-  class OrExpr extends BinExpr {
+  class OrExpr extends BinaryExpr {
     OrExpr() {
       this instanceof OrBitwiseExpr or
       this instanceof OrLogicalExpr or
@@ -275,9 +201,7 @@ private module GuardsInput implements SharedGuards::InputSig<Location> {
     }
   }
 
-  class NotExpr extends Expr instanceof J::LogNotExpr {
-    Expr getOperand() { result = this.(J::LogNotExpr).getExpr() }
-  }
+  class NotExpr = J::LogNotExpr;
 
   class IdExpr extends Expr {
     IdExpr() { this instanceof AssignExpr or this instanceof CastExpr }
@@ -294,39 +218,78 @@ private module GuardsInput implements SharedGuards::InputSig<Location> {
     equals.getNumberOfParameters() = 2
   }
 
-  class EqualityTest extends Expr {
-    EqualityTest() {
-      this instanceof J::EqualityTest or
-      this.(MethodCall).getMethod() instanceof EqualsMethod or
-      objectsEquals(this.(MethodCall).getMethod())
+  pragma[nomagic]
+  predicate equalityTest(Expr eqtest, Expr left, Expr right, boolean polarity) {
+    exists(EqualityTest eq | eq = eqtest |
+      eq.getLeftOperand() = left and
+      eq.getRightOperand() = right and
+      eq.polarity() = polarity
+    )
+    or
+    exists(MethodCall call | call = eqtest and polarity = true |
+      call.getMethod() instanceof EqualsMethod and
+      call.getQualifier() = left and
+      call.getAnArgument() = right
+      or
+      objectsEquals(call.getMethod()) and
+      call.getArgument(0) = left and
+      call.getArgument(1) = right
+    )
+  }
+
+  class ConditionalExpr = J::ConditionalExpr;
+
+  class Parameter = J::Parameter;
+
+  private int parameterPosition() { result in [-1, any(Parameter p).getPosition()] }
+
+  /** A parameter position represented by an integer. */
+  class ParameterPosition extends int {
+    ParameterPosition() { this = parameterPosition() }
+  }
+
+  /** An argument position represented by an integer. */
+  class ArgumentPosition extends int {
+    ArgumentPosition() { this = parameterPosition() }
+  }
+
+  /** Holds if arguments at position `apos` match parameters at position `ppos`. */
+  overlay[caller?]
+  pragma[inline]
+  predicate parameterMatch(ParameterPosition ppos, ArgumentPosition apos) { ppos = apos }
+
+  final private class FinalMethod = Method;
+
+  class NonOverridableMethod extends FinalMethod {
+    NonOverridableMethod() { not super.isOverridable() }
+
+    Parameter getParameter(ParameterPosition ppos) {
+      super.getParameter(ppos) = result and
+      not result.isVarargs()
     }
 
-    Expr getAnOperand() {
-      result = this.(J::EqualityTest).getAnOperand()
-      or
-      result = this.(MethodCall).getAnArgument()
-      or
-      this.(MethodCall).getMethod() instanceof EqualsMethod and
-      result = this.(MethodCall).getQualifier()
-    }
-
-    boolean polarity() {
-      result = this.(J::EqualityTest).polarity()
-      or
-      result = true and not this instanceof J::EqualityTest
+    GuardsInput::Expr getAReturnExpr() {
+      exists(ReturnStmt ret |
+        this = ret.getEnclosingCallable() and
+        ret.getExpr() = result
+      )
     }
   }
 
-  class ConditionalExpr extends Expr instanceof J::ConditionalExpr {
-    Expr getCondition() { result = super.getCondition() }
+  private predicate nonOverridableMethodCall(MethodCall call, NonOverridableMethod m) {
+    call.getMethod().getSourceDeclaration() = m
+  }
 
-    Expr getThen() { result = super.getTrueExpr() }
+  class NonOverridableMethodCall extends GuardsInput::Expr instanceof MethodCall {
+    NonOverridableMethodCall() { nonOverridableMethodCall(this, _) }
 
-    Expr getElse() { result = super.getFalseExpr() }
+    NonOverridableMethod getMethod() { nonOverridableMethodCall(this, result) }
+
+    GuardsInput::Expr getArgument(ArgumentPosition apos) { result = super.getArgument(apos) }
   }
 }
 
-private module GuardsImpl = SharedGuards::Make<Location, GuardsInput>;
+private module GuardsImpl = SharedGuards::Make<Location, Cfg, GuardsInput>;
 
 private module LogicInputCommon {
   private import semmle.code.java.dataflow.NullGuards as NullGuards
@@ -342,75 +305,37 @@ private module LogicInputCommon {
       NullGuards::nullCheckMethod(call.getMethod(), val.asBooleanValue(), isNull)
     )
   }
-}
-
-private module LogicInput_v1 implements GuardsImpl::LogicInputSig {
-  private import semmle.code.java.dataflow.internal.BaseSSA
-
-  final private class FinalBaseSsaVariable = BaseSsaVariable;
-
-  class SsaDefinition extends FinalBaseSsaVariable {
-    GuardsInput::Expr getARead() { result = this.getAUse() }
-  }
-
-  class SsaWriteDefinition extends SsaDefinition instanceof BaseSsaUpdate {
-    GuardsInput::Expr getDefinition() {
-      super.getDefiningExpr().(VariableAssign).getSource() = result or
-      super.getDefiningExpr().(AssignOp) = result
-    }
-  }
-
-  class SsaPhiNode extends SsaDefinition instanceof BaseSsaPhiNode {
-    predicate hasInputFromBlock(SsaDefinition inp, BasicBlock bb) {
-      super.hasInputFromBlock(inp, bb)
-    }
-  }
-
-  predicate additionalNullCheck = LogicInputCommon::additionalNullCheck/4;
 
   predicate additionalImpliesStep(
     GuardsImpl::PreGuard g1, GuardValue v1, GuardsImpl::PreGuard g2, GuardValue v2
   ) {
-    exists(MethodCall check, int argIndex |
+    exists(MethodCall check |
       g1 = check and
-      v1.getDualValue().isThrowsException() and
-      conditionCheckArgument(check, argIndex, v2.asBooleanValue()) and
-      g2 = check.getArgument(argIndex)
+      v1.getDualValue().isThrowsException()
+    |
+      methodCallChecksBoolean(check, g2, v2.asBooleanValue())
+      or
+      methodCallChecksNotNull(check, g2) and v2.isNonNullValue()
     )
   }
 }
 
-private module LogicInput_v2 implements GuardsImpl::LogicInputSig {
-  private import semmle.code.java.dataflow.SSA as SSA
-
-  final private class FinalSsaVariable = SSA::SsaVariable;
-
-  class SsaDefinition extends FinalSsaVariable {
-    GuardsInput::Expr getARead() { result = this.getAUse() }
-  }
-
-  class SsaWriteDefinition extends SsaDefinition instanceof SSA::SsaExplicitUpdate {
-    GuardsInput::Expr getDefinition() {
-      super.getDefiningExpr().(VariableAssign).getSource() = result or
-      super.getDefiningExpr().(AssignOp) = result
-    }
-  }
-
-  class SsaPhiNode extends SsaDefinition instanceof SSA::SsaPhiNode {
-    predicate hasInputFromBlock(SsaDefinition inp, BasicBlock bb) {
-      super.hasInputFromBlock(inp, bb)
-    }
-  }
+private module LogicInput_v1 implements GuardsImpl::LogicInputSig {
+  private import semmle.code.java.dataflow.internal.BaseSSA as Base
+  import Base::Ssa
 
   predicate additionalNullCheck = LogicInputCommon::additionalNullCheck/4;
 
-  predicate additionalImpliesStep(
-    GuardsImpl::PreGuard g1, GuardValue v1, GuardsImpl::PreGuard g2, GuardValue v2
-  ) {
-    LogicInput_v1::additionalImpliesStep(g1, v1, g2, v2)
-    or
-    CustomGuard::additionalImpliesStep(g1, v1, g2, v2)
-  }
+  predicate additionalImpliesStep = LogicInputCommon::additionalImpliesStep/4;
+}
+
+private module LogicInput_v2 implements GuardsImpl::LogicInputSig {
+  private import semmle.code.java.dataflow.SSA
+  import Ssa
+
+  predicate additionalNullCheck = LogicInputCommon::additionalNullCheck/4;
+
+  predicate additionalImpliesStep = LogicInputCommon::additionalImpliesStep/4;
 }
 
 private module LogicInput_v3 implements GuardsImpl::LogicInputSig {
@@ -423,68 +348,10 @@ private module LogicInput_v3 implements GuardsImpl::LogicInputSig {
 
   predicate additionalNullCheck = LogicInputCommon::additionalNullCheck/4;
 
-  predicate additionalImpliesStep = LogicInput_v2::additionalImpliesStep/4;
-}
-
-private module CustomGuardInput implements Guards_v2::CustomGuardInputSig {
-  private import semmle.code.java.dataflow.SSA
-
-  private int parameterPosition() { result in [-1, any(Parameter p).getPosition()] }
-
-  /** A parameter position represented by an integer. */
-  class ParameterPosition extends int {
-    ParameterPosition() { this = parameterPosition() }
-  }
-
-  /** An argument position represented by an integer. */
-  class ArgumentPosition extends int {
-    ArgumentPosition() { this = parameterPosition() }
-  }
-
-  /** Holds if arguments at position `apos` match parameters at position `ppos`. */
-  pragma[inline]
-  predicate parameterMatch(ParameterPosition ppos, ArgumentPosition apos) { ppos = apos }
-
-  final private class FinalMethod = Method;
-
-  class BooleanMethod extends FinalMethod {
-    BooleanMethod() {
-      super.getReturnType().(PrimitiveType).hasName("boolean") and
-      not super.isOverridable()
-    }
-
-    LogicInput_v2::SsaDefinition getParameter(ParameterPosition ppos) {
-      exists(Parameter p |
-        super.getParameter(ppos) = p and
-        not p.isVarargs() and
-        result.(SsaImplicitInit).isParameterDefinition(p)
-      )
-    }
-
-    GuardsInput::Expr getAReturnExpr() {
-      exists(ReturnStmt ret |
-        this = ret.getEnclosingCallable() and
-        ret.getResult() = result
-      )
-    }
-  }
-
-  private predicate booleanMethodCall(MethodCall call, BooleanMethod m) {
-    call.getMethod().getSourceDeclaration() = m
-  }
-
-  class BooleanMethodCall extends GuardsInput::Expr instanceof MethodCall {
-    BooleanMethodCall() { booleanMethodCall(this, _) }
-
-    BooleanMethod getMethod() { booleanMethodCall(this, result) }
-
-    GuardsInput::Expr getArgument(ArgumentPosition apos) { result = super.getArgument(apos) }
-  }
+  predicate additionalImpliesStep = LogicInputCommon::additionalImpliesStep/4;
 }
 
 class GuardValue = GuardsImpl::GuardValue;
-
-private module CustomGuard = Guards_v2::CustomGuard<CustomGuardInput>;
 
 /** INTERNAL: Don't use. */
 module Guards_v1 = GuardsImpl::Logic<LogicInput_v1>;
@@ -494,12 +361,6 @@ module Guards_v2 = GuardsImpl::Logic<LogicInput_v2>;
 
 /** INTERNAL: Don't use. */
 module Guards_v3 = GuardsImpl::Logic<LogicInput_v3>;
-
-/** INTERNAL: Don't use. */
-predicate implies_v3(Guard g1, boolean b1, Guard g2, boolean b2) {
-  Guards_v3::boolImplies(g1, any(GuardValue v | v.asBooleanValue() = b1), g2,
-    any(GuardValue v | v.asBooleanValue() = b2))
-}
 
 /**
  * A guard. This may be any expression whose value determines subsequent

@@ -12,6 +12,7 @@
  */
 
 import python
+private import LegacyPointsTo
 import semmle.python.filters.Tests
 
 predicate has_string_type(Value v) {
@@ -21,10 +22,10 @@ predicate has_string_type(Value v) {
 }
 
 from
-  For loop, ControlFlowNode iter, Value str, Value seq, ControlFlowNode seq_origin,
+  For loop, ControlFlowNodeWithPointsTo iter, Value str, Value seq, ControlFlowNode seq_origin,
   ControlFlowNode str_origin
 where
-  loop.getIter().getAFlowNode() = iter and
+  iter.getNode() = loop.getIter() and
   iter.pointsTo(str, str_origin) and
   iter.pointsTo(seq, seq_origin) and
   has_string_type(str) and

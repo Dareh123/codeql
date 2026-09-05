@@ -38,13 +38,6 @@ class NonTypeTemplateParameter extends Literal, TemplateParameterImpl {
 /**
  * A C++ `typename` (or `class`) template parameter.
  *
- * DEPRECATED: Use `TypeTemplateParameter` instead.
- */
-deprecated class TemplateParameter = TypeTemplateParameter;
-
-/**
- * A C++ `typename` (or `class`) template parameter.
- *
  * In the example below, `T` is a template parameter:
  * ```
  * template <class T>
@@ -105,7 +98,7 @@ class AutoType extends TypeTemplateParameter {
 
   override string getAPrimaryQlClass() { result = "AutoType" }
 
-  override Location getLocation() { result instanceof UnknownDefaultLocation }
+  override Location getLocation() { result instanceof UnknownLocation }
 }
 
 /**

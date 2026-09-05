@@ -1,6 +1,4 @@
-# Cache Poisoning in GitHub Actions
-
-## Description
+## Overview
 
 GitHub Actions cache poisoning is a technique that allows an attacker to inject malicious content into the Action's cache from unprivileged workflow, potentially leading to code execution in privileged workflows.
 
@@ -23,7 +21,7 @@ In GitHub Actions, cache scopes are primarily determined by the branch structure
 
 Due to the above design, if something is cached in the context of the default branch (e.g., `main`), it becomes accessible to any feature branch derived from `main`.
 
-## Recommendations
+## Recommendation
 
 1. Avoid using caching in workflows that handle sensitive operations like releases.
 2. If caching must be used:
@@ -34,50 +32,57 @@ Due to the above design, if something is cached in the context of the default br
 4. Never run untrusted code in the context of the default branch.
 5. Sign the cache value cryptographically and verify the signature before usage.
 
-## Examples
+## Example
+
+GitHub gives workflows triggered by low-trust events, such as `issue_comment`,
+`pull_request_target`, and `workflow_run`, read-only access to the default branch cache scope.
+This query therefore reports only workflows whose trigger can write to that scope.
 
 ### Incorrect Usage
 
-The following workflow is vulnerable to code injection in a non-privileged job but in the context of the default branch.
+The following workflow interpolates a commit message directly into a script on a push to the
+default branch. A commit message originating from a merged contribution may contain shell syntax,
+which can expose the cache write token and allow the default branch cache to be poisoned.
 
 ```yaml
 name: Vulnerable Workflow
 on:
-  issue_comment:
-    types: [created]
+  push:
+    branches: [main]
 
 jobs:
-  pr-comment:
+  build:
     permissions: {}
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo ${{ github.event.comment.body }}
+          echo ${{ github.event.head_commit.message }}
 ```
 
 ### Correct Usage
 
-The following workflow is not vulnerable to code injections even if it runs in the context of the default branch.
+The following workflow passes the commit message through an environment variable, so the shell
+does not interpret its contents as code.
 
 ```yaml
 name: Secure Workflow
 on:
-  issue_comment:
-    types: [created]
+  push:
+    branches: [main]
 
 jobs:
-  pr-comment:
+  build:
     permissions: {}
     runs-on: ubuntu-latest
     steps:
       - env:
-          BODY: ${{ github.event.comment.body }}
+          MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          echo "$BODY"
+          echo "$MESSAGE"
 ```
 
 ## References
 
-- [The Monsters in Your Build Cache – GitHub Actions Cache Poisoning](https://adnanthekhan.com/2024/05/06/the-monsters-in-your-build-cache-github-actions-cache-poisoning/)
-- [GitHub Actions Caching Documentation](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows)
-- [Cache Poisoning in GitHub Actions](https://scribesecurity.com/blog/github-cache-poisoning/)
+- Adnan Khan's Blog: [The Monsters in Your Build Cache – GitHub Actions Cache Poisoning](https://adnanthekhan.com/2024/05/06/the-monsters-in-your-build-cache-github-actions-cache-poisoning/).
+- GitHub Docs: [Cache access for low-trust workflow triggers](https://docs.github.com/actions/reference/workflows-and-actions/dependency-caching#cache-access-for-low-trust-workflow-triggers).
+- Scribe Security Blog: [Cache Poisoning in GitHub Actions](https://scribesecurity.com/blog/github-cache-poisoning/).

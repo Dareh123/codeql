@@ -154,7 +154,6 @@ int sizeof_IntType() { exists(IntType it | result = it.getSize()) }
 
 from FormattingFunctionCall ffc, int n, Expr arg, Type expected, Type actual
 where
-  not any(Compilation c).buildModeNone() and
   (
     formattingFunctionCallExpectedType(ffc, n, expected) and
     formattingFunctionCallActualType(ffc, n, arg, actual) and
@@ -169,9 +168,11 @@ where
     formatOtherArgType(ffc, n, expected, arg, actual) and
     not actual.getUnspecifiedType().(IntegralType).getSize() = sizeof_IntType()
   ) and
+  // Exclude some cases where we're less confident the result is correct / clear / valuable
   not arg.isAffectedByMacro() and
   not arg.isFromUninstantiatedTemplate(_) and
   not actual.stripType() instanceof ErroneousType and
+  not arg.getType().stripType().(RoutineType).getReturnType() instanceof ErroneousType and
   not arg.(Call).mayBeFromImplicitlyDeclaredFunction() and
   // Make sure that the format function definition is consistent
   count(ffc.getTarget().getFormatParameterIndex()) = 1

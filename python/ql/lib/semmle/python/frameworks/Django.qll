@@ -2872,7 +2872,10 @@ module PrivateDjango {
     DataFlow::CfgNode
   {
     DjangoRedirectViewGetRedirectUrlReturn() {
-      node = any(GetRedirectUrlFunction f).getAReturnValueFlowNode()
+      exists(Return ret |
+        ret.getScope() = any(GetRedirectUrlFunction f) and
+        node.getNode() = ret.getValue()
+      )
     }
 
     override DataFlow::Node getRedirectLocation() { result = this }
@@ -2963,38 +2966,6 @@ module PrivateDjango {
     override Function getRequestHandler() { result = function }
 
     override predicate csrfEnabled() { decoratorName in ["csrf_protect", "requires_csrf_token"] }
-  }
-
-  private predicate djangoUrlHasAllowedHostAndScheme(
-    DataFlow::GuardNode g, ControlFlowNode node, boolean branch
-  ) {
-    exists(API::CallNode call |
-      call =
-        API::moduleImport("django")
-            .getMember("utils")
-            .getMember("http")
-            .getMember("url_has_allowed_host_and_scheme")
-            .getACall() and
-      g = call.asCfgNode() and
-      node = call.getParameter(0, "url").asSink().asCfgNode() and
-      branch = true
-    )
-  }
-
-  /**
-   * A call to `django.utils.http.url_has_allowed_host_and_scheme`, considered as a sanitizer-guard for URL redirection.
-   *
-   * See https://docs.djangoproject.com/en/4.2/_modules/django/utils/http/
-   */
-  private class DjangoAllowedUrl extends UrlRedirect::Sanitizer {
-    DjangoAllowedUrl() {
-      this = DataFlow::BarrierGuard<djangoUrlHasAllowedHostAndScheme/3>::getABarrierNode()
-    }
-
-    override predicate sanitizes(UrlRedirect::FlowState state) {
-      // sanitize all flow states
-      any()
-    }
   }
 
   // ---------------------------------------------------------------------------

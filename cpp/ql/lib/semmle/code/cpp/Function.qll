@@ -171,12 +171,14 @@ class Function extends Declaration, ControlFlowNode, AccessHolder, @function {
    * Gets the nth parameter of this function. There is no result for the
    * implicit `this` parameter, and there is no `...` varargs pseudo-parameter.
    */
+  pragma[nomagic]
   Parameter getParameter(int n) { params(unresolveElement(result), underlyingElement(this), n, _) }
 
   /**
    * Gets a parameter of this function. There is no result for the implicit
    * `this` parameter, and there is no `...` varargs pseudo-parameter.
    */
+  pragma[nomagic]
   Parameter getAParameter() { params(unresolveElement(result), underlyingElement(this), _, _) }
 
   /**
@@ -282,9 +284,12 @@ class Function extends Declaration, ControlFlowNode, AccessHolder, @function {
    * definition, if possible.)
    */
   override Location getLocation() {
-    if exists(this.getDefinition())
-    then result = this.getDefinitionLocation()
-    else result = this.getADeclarationLocation()
+    if this instanceof BuiltInFunction
+    then result instanceof UnknownLocation // a dummy location for the built-in function
+    else
+      if exists(this.getDefinition())
+      then result = this.getDefinitionLocation()
+      else result = this.getADeclarationLocation()
   }
 
   /** Gets a child declaration of this function. */
@@ -519,6 +524,12 @@ class Function extends Declaration, ControlFlowNode, AccessHolder, @function {
       not exists(NewOrNewArrayExpr new | e = new.getAllocatorCall().getArgument(0))
     )
   }
+
+  /**
+   * Holds if this function has an ambiguous return type, meaning that zero or multiple return
+   * types for this function are present in the database (this can occur in `build-mode: none`).
+   */
+  predicate hasAmbiguousReturnType() { count(this.getType()) != 1 }
 }
 
 pragma[noinline]
@@ -817,6 +828,27 @@ class TemplateFunction extends Function {
    * such things -- see FunctionTemplateSpecialization for further details.
    */
   FunctionTemplateSpecialization getASpecialization() { result.getPrimaryTemplate() = this }
+
+  /**
+   * Gets the class member template this template was generated from.
+   *
+   * This predicate only has results for templates that are members of class
+   * template instantiations. For example, for `MyTemplateClass<int>::f<S>`
+   * in the following code, the result is `MyTemplateClass<T>::f<S>`.
+   * ```cpp
+   * template<class T>
+   * class MyTemplateClass {
+   *   template<class S>
+   *   S f();
+   * };
+   *
+   * template
+   * class MyTemplateClass<int>;
+   * ```
+   */
+  TemplateFunction getOriginalTemplate() {
+    function_template_generated_from(underlyingElement(this), unresolveElement(result))
+  }
 }
 
 /**
@@ -896,16 +928,8 @@ class FunctionTemplateSpecialization extends Function {
  * A GCC built-in function. For example: `__builtin___memcpy_chk`.
  */
 class BuiltInFunction extends Function {
-  BuiltInFunction() { functions(underlyingElement(this), _, 6) }
-
-  /** Gets a dummy location for the built-in function. */
-  override Location getLocation() {
-    suppressUnusedThis(this) and
-    result instanceof UnknownDefaultLocation
-  }
+  BuiltInFunction() { builtin_functions(underlyingElement(this)) }
 }
-
-private predicate suppressUnusedThis(Function f) { any() }
 
 /**
  * A C++ user-defined literal [N4140 13.5.8].

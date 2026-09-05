@@ -11,21 +11,21 @@ predicate knownOpenSslConstantToHashFamilyType(
   exists(string name |
     name = e.(KnownOpenSslAlgorithmExpr).getNormalizedName() and
     (
-      name.matches("BLAKE2B") and type instanceof Crypto::BLAKE2B
+      name = "BLAKE2B" and type instanceof Crypto::BLAKE2B
       or
-      name.matches("BLAKE2S") and type instanceof Crypto::BLAKE2S
+      name = "BLAKE2S" and type instanceof Crypto::BLAKE2S
       or
-      name.matches("GOST%") and type instanceof Crypto::GOSTHash
+      name.matches("GOST%") and type instanceof Crypto::GOST_HASH
       or
-      name.matches("MD2") and type instanceof Crypto::MD2
+      name = "MD2" and type instanceof Crypto::MD2
       or
-      name.matches("MD4") and type instanceof Crypto::MD4
+      name = "MD4" and type instanceof Crypto::MD4
       or
-      name.matches("MD5") and type instanceof Crypto::MD5
+      name = "MD5" and type instanceof Crypto::MD5
       or
-      name.matches("MDC2") and type instanceof Crypto::MDC2
+      name = "MDC2" and type instanceof Crypto::MDC2
       or
-      name.matches("POLY1305") and type instanceof Crypto::POLY1305
+      name = "POLY1305" and type instanceof Crypto::POLY1305
       or
       name.matches(["SHA", "SHA1"]) and type instanceof Crypto::SHA1
       or
@@ -33,13 +33,13 @@ predicate knownOpenSslConstantToHashFamilyType(
       or
       name.matches("SHA3-%") and type instanceof Crypto::SHA3
       or
-      name.matches(["SHAKE"]) and type instanceof Crypto::SHAKE
+      name = "SHAKE" and type instanceof Crypto::SHAKE
       or
-      name.matches("SM3") and type instanceof Crypto::SM3
+      name = "SM3" and type instanceof Crypto::SM3
       or
-      name.matches("RIPEMD160") and type instanceof Crypto::RIPEMD160
+      name = "RIPEMD160" and type instanceof Crypto::RIPEMD160
       or
-      name.matches("WHIRLPOOL") and type instanceof Crypto::WHIRLPOOL
+      name = "WHIRLPOOL" and type instanceof Crypto::WHIRLPOOL
     )
   )
 }
@@ -59,7 +59,8 @@ class KnownOpenSslHashConstantAlgorithmInstance extends OpenSslAlgorithmInstance
       // Sink is an argument to a CipherGetterCall
       sink = getterCall.getInputNode() and
       // Source is `this`
-      src.asExpr() = this and
+      // NOTE: src literals can be ints or strings, so need to consider asExpr and asIndirectExpr
+      this = [src.asExpr(), src.asIndirectExpr()] and
       // This traces to a getter
       KnownOpenSslAlgorithmToAlgorithmValueConsumerFlow::flow(src, sink)
     )
@@ -71,7 +72,7 @@ class KnownOpenSslHashConstantAlgorithmInstance extends OpenSslAlgorithmInstance
 
   override OpenSslAlgorithmValueConsumer getAvc() { result = getterCall }
 
-  override Crypto::THashType getHashFamily() {
+  override Crypto::THashType getHashType() {
     knownOpenSslConstantToHashFamilyType(this, result)
     or
     not knownOpenSslConstantToHashFamilyType(this, _) and result = Crypto::OtherHashType()

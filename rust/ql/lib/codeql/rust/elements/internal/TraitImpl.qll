@@ -5,6 +5,7 @@
  */
 
 private import codeql.rust.elements.internal.generated.Trait
+private import codeql.rust.internal.PathResolution as PathResolution
 
 /**
  * INTERNAL: This module contains the customizable definition of `Trait` and should not
@@ -35,6 +36,43 @@ module Impl {
       or
       not this.hasGenericParamList() and
       result = 0
+    }
+
+    private int nrOfDirectTypeBounds() {
+      result = this.getTypeBoundList().getNumberOfBounds()
+      or
+      not this.hasTypeBoundList() and
+      result = 0
+    }
+
+    /**
+     * Gets the `index`th type bound of this trait, if any.
+     *
+     * This includes type bounds directly on the trait and bounds from any
+     * `where` clauses for `Self`.
+     */
+    TypeBound getTypeBound(int index) {
+      result = this.getTypeBoundList().getBound(index)
+      or
+      exists(WherePred wp |
+        wp = this.getWhereClause().getAPredicate() and
+        wp.getTypeRepr().(PathTypeRepr).getPath().getText() = "Self" and
+        result = wp.getTypeBoundList().getBound(index - this.nrOfDirectTypeBounds())
+      )
+    }
+
+    /**
+     * Gets a type bound of this trait.
+     *
+     * This includes type bounds directly on the trait and bounds from any
+     * `where` clauses for `Self`.
+     */
+    TypeBound getATypeBound() { result = this.getTypeBound(_) }
+
+    /** Gets a direct supertrait of this trait, if any. */
+    Trait getSupertrait() {
+      result =
+        PathResolution::resolvePath(this.getATypeBound().getTypeRepr().(PathTypeRepr).getPath())
     }
   }
 }

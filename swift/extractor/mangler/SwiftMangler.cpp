@@ -1,6 +1,5 @@
 #include "swift/extractor/mangler/SwiftMangler.h"
 #include "swift/extractor/infra/SwiftDispatcher.h"
-#include "swift/extractor/trap/generated/decl/TrapClasses.h"
 #include "swift/logging/SwiftLogging.h"
 
 #include <swift/AST/Module.h>
@@ -8,6 +7,8 @@
 #include <swift/AST/ASTContext.h>
 #include <swift/AST/GenericEnvironment.h>
 #include <swift/AST/GenericParamList.h>
+#include <swift/AST/ClangModuleLoader.h>
+#include <clang/Basic/Module.h>
 
 using namespace codeql;
 
@@ -37,6 +38,9 @@ std::string_view getTypeKindStr(const swift::TypeBase* type) {
 }
 
 }  // namespace
+
+std::unordered_map<const swift::Decl*, SwiftMangler::ExtensionOrFilePrivateValueIndex>
+    SwiftMangler::preloadedExtensionOrFilePrivateValueIndexes;
 
 SwiftMangledName SwiftMangler::initMangled(const swift::TypeBase* type) {
   return {getTypeKindStr(type), '_'};
@@ -70,6 +74,12 @@ SwiftMangledName SwiftMangler::visitValueDecl(const swift::ValueDecl* decl, bool
   if (decl->isStatic()) {
     ret << "|static";
   }
+  if (decl->getFormalAccess() == swift::AccessLevel::FilePrivate) {
+    auto parent = getParent(decl);
+    auto index = getExtensionOrFilePrivateValueIndex(decl, parent);
+    ret << "|fileprivate" << index.index
+        << (index.kind == ExtensionOrFilePrivateValueKind::clang ? "_clang" : "");
+  }
   return ret;
 }
 
@@ -100,42 +110,94 @@ SwiftMangledName SwiftMangler::visitExtensionDecl(const swift::ExtensionDecl* de
 
   auto parent = getParent(decl);
   auto target = decl->getExtendedType();
-  return initMangled(decl) << fetch(target) << getExtensionIndex(decl, parent);
+  auto index = getExtensionOrFilePrivateValueIndex(decl, parent);
+  return initMangled(decl) << fetch(target) << index.index
+                           << (index.kind == ExtensionOrFilePrivateValueKind::clang ? "_clang"
+                                                                                    : "");
 }
 
-unsigned SwiftMangler::getExtensionIndex(const swift::ExtensionDecl* decl,
-                                         const swift::Decl* parent) {
-  // to avoid iterating multiple times on the parent of multiple extensions, we preload extension
-  // indexes once for each encountered parent into the `preloadedExtensionIndexes` mapping.
-  // Because we mangle declarations only once in a given trap/dispatcher context, we can safely
-  // discard preloaded indexes on use
-  if (auto found = preloadedExtensionIndexes.extract(decl)) {
-    return found.mapped();
+SwiftMangler::ExtensionOrFilePrivateValueIndex SwiftMangler::getExtensionOrFilePrivateValueIndex(
+    const swift::Decl* decl,
+    const swift::Decl* parent) {
+  // to avoid iterating multiple times on the parent, we preload the indexes once for each
+  // encountered parent.
+  if (auto found = SwiftMangler::preloadedExtensionOrFilePrivateValueIndexes.find(decl);
+      found != SwiftMangler::preloadedExtensionOrFilePrivateValueIndexes.end()) {
+    return found->second;
   }
   if (auto parentModule = llvm::dyn_cast<swift::ModuleDecl>(parent)) {
     llvm::SmallVector<swift::Decl*> siblings;
     parentModule->getTopLevelDecls(siblings);
-    indexExtensions(siblings);
+    indexExtensionsAndFilePrivateValues(siblings);
+    if (auto clangModule = parentModule->findUnderlyingClangModule()) {
+      indexClangExtensionsAndFilePrivateValues(clangModule,
+                                               decl->getASTContext().getClangModuleLoader());
+    }
   } else if (auto iterableParent = llvm::dyn_cast<swift::IterableDeclContext>(parent)) {
-    indexExtensions(iterableParent->getAllMembers());
+    indexExtensionsAndFilePrivateValues(iterableParent->getAllMembers());
   } else {
     // TODO use a generic logging handle for Swift entities here, once it's available
     CODEQL_ASSERT(false, "non-local context must be module or iterable decl context");
   }
-  auto found = preloadedExtensionIndexes.extract(decl);
+  auto found = SwiftMangler::preloadedExtensionOrFilePrivateValueIndexes.find(decl);
   // TODO use a generic logging handle for Swift entities here, once it's available
-  CODEQL_ASSERT(found, "extension not found within parent");
-  return found.mapped();
+  CODEQL_ASSERT(found != SwiftMangler::preloadedExtensionOrFilePrivateValueIndexes.end(),
+                "declaration not found within parent");
+  return found->second;
 }
 
-void SwiftMangler::indexExtensions(llvm::ArrayRef<swift::Decl*> siblings) {
+bool SwiftMangler::isExtensionOrFilePrivateValue(const swift::Decl* decl) {
+  if (decl->getKind() == swift::DeclKind::Extension) {
+    return true;
+  }
+
+  if (const auto* valueDecl = swift::dyn_cast<swift::ValueDecl>(decl)) {
+    return valueDecl->getFormalAccess() == swift::AccessLevel::FilePrivate;
+  }
+
+  return false;
+}
+
+void SwiftMangler::indexExtensionsAndFilePrivateValues(llvm::ArrayRef<swift::Decl*> siblings) {
   auto index = 0u;
   for (auto sibling : siblings) {
-    if (sibling->getKind() == swift::DeclKind::Extension) {
-      preloadedExtensionIndexes.emplace(sibling, index);
+    if (isExtensionOrFilePrivateValue(sibling)) {
+      SwiftMangler::preloadedExtensionOrFilePrivateValueIndexes.try_emplace(
+          sibling, ExtensionOrFilePrivateValueKind::swift, index);
+      index++;
     }
-    ++index;
   }
+}
+
+uint32_t SwiftMangler::indexClangSubmoduleExtensionsAndFilePrivateValues(
+    const clang::Module* clangModule,
+    swift::ClangModuleLoader* moduleLoader,
+    uint32_t index) {
+  for (const auto& submodule : clangModule->submodules()) {
+    index = indexClangSubmoduleExtensionsAndFilePrivateValues(submodule, moduleLoader, index);
+    if (auto* swiftSubmodule = moduleLoader->getWrapperForModule(submodule)) {
+      llvm::SmallVector<swift::Decl*> children;
+      swiftSubmodule->getTopLevelDecls(children);
+      for (const auto child : children) {
+        if (isExtensionOrFilePrivateValue(child)) {
+          SwiftMangler::preloadedExtensionOrFilePrivateValueIndexes.try_emplace(
+              child, ExtensionOrFilePrivateValueKind::clang, index);
+          index++;
+        }
+      }
+    }
+  }
+  return index;
+}
+
+void SwiftMangler::indexClangExtensionsAndFilePrivateValues(
+    const clang::Module* clangModule,
+    swift::ClangModuleLoader* moduleLoader) {
+  if (!moduleLoader) {
+    return;
+  }
+
+  indexClangSubmoduleExtensionsAndFilePrivateValues(clangModule, moduleLoader, 0u);
 }
 
 SwiftMangledName SwiftMangler::visitGenericTypeParamDecl(const swift::GenericTypeParamDecl* decl) {
@@ -169,6 +231,14 @@ SwiftMangledName SwiftMangler::visitTupleType(const swift::TupleType* type) {
 SwiftMangledName SwiftMangler::visitBuiltinType(const swift::BuiltinType* type) {
   llvm::SmallString<32> buffer;
   return initMangled(type) << type->getTypeName(buffer, /* prependBuiltinNamespace= */ false);
+}
+
+SwiftMangledName SwiftMangler::visitBuiltinFixedArrayType(
+    const swift::BuiltinFixedArrayType* type) {
+  auto ret = visitBuiltinType(type);
+  ret << fetch(type->getSize());
+  ret << fetch(type->getElementType());
+  return ret;
 }
 
 SwiftMangledName SwiftMangler::visitAnyGenericType(const swift::AnyGenericType* type) {
@@ -209,14 +279,11 @@ SwiftMangledName SwiftMangler::visitAnyFunctionType(const swift::AnyFunctionType
     if (flags.isNonEphemeral()) {
       ret << "_nonephermeral";
     }
-    if (flags.isIsolated()) {
-      ret << "_isolated";
-    }
     if (flags.isSending()) {
       ret << "_sending";
     }
-    if (flags.isCompileTimeConst()) {
-      ret << "_compiletimeconst";
+    if (flags.isCompileTimeLiteral()) {
+      ret << "_compiletimeliteral";
     }
     if (flags.isNoDerivative()) {
       ret << "_noderivative";
@@ -225,6 +292,40 @@ SwiftMangledName SwiftMangler::visitAnyFunctionType(const swift::AnyFunctionType
       ret << "...";
     }
   }
+
+  if (type->hasLifetimeDependencies()) {
+    for (const auto& lifetime : type->getLifetimeDependencies()) {
+      auto addressable = lifetime.getAddressableIndices();
+      auto condAddressable = lifetime.getConditionallyAddressableIndices();
+      ret << "_lifetime";
+
+      auto addIndexes = [&](swift::IndexSubset* bitvector) {
+        for (unsigned i = 0; i < bitvector->getCapacity(); ++i) {
+          if (bitvector->contains(i)) {
+            if (addressable && addressable->contains(i)) {
+              ret << "_address";
+            } else if (condAddressable && condAddressable->contains(i)) {
+              ret << "_address_for_deps";
+            }
+            ret << "_" << i;
+          }
+        }
+      };
+
+      if (lifetime.hasInheritLifetimeParamIndices()) {
+        ret << "_copy";
+        addIndexes(lifetime.getInheritIndices());
+      }
+      if (lifetime.hasScopeLifetimeParamIndices()) {
+        ret << "_borrow";
+        addIndexes(lifetime.getScopeIndices());
+      }
+      if (lifetime.isImmortal()) {
+        ret << "_immortal";
+      }
+    }
+  }
+
   ret << "->" << fetch(type->getResult());
   if (type->isAsync()) {
     ret << "_async";
@@ -244,8 +345,12 @@ SwiftMangledName SwiftMangler::visitAnyFunctionType(const swift::AnyFunctionType
   if (type->hasGlobalActor()) {
     ret << "_actor" << fetch(type->getGlobalActor());
   }
-  if (type->getIsolation().isErased()) {
+  const auto& isolation = type->getIsolation();
+  if (isolation.isErased()) {
     ret << "_isolated";
+  }
+  if (isolation.isNonIsolatedCaller()) {
+    ret << "_nonisolatednonsending";
   }
   // TODO: see if this needs to be used in identifying types, if not it needs to be removed from
   // type printing in the Swift compiler code
@@ -358,10 +463,17 @@ SwiftMangledName SwiftMangler::visitArchetypeType(const swift::ArchetypeType* ty
 
 SwiftMangledName SwiftMangler::visitOpaqueTypeArchetypeType(
     const swift::OpaqueTypeArchetypeType* type) {
-  return visitArchetypeType(type) << fetch(type->getDecl());
+  auto ret = visitArchetypeType(type) << fetch(type->getDecl());
+  ret << '<';
+  for (auto replacement : type->getSubstitutions().getReplacementTypes()) {
+    ret << fetch(replacement);
+  }
+  ret << '>';
+  return ret;
 }
 
-SwiftMangledName SwiftMangler::visitOpenedArchetypeType(const swift::OpenedArchetypeType* type) {
+SwiftMangledName SwiftMangler::visitExistentialArchetypeType(
+    const swift::ExistentialArchetypeType* type) {
   auto* env = type->getGenericEnvironment();
   llvm::SmallVector<char> uuid;
   env->getOpenedExistentialUUID().toString(uuid);

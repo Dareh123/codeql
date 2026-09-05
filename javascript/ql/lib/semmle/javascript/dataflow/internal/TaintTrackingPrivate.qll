@@ -6,13 +6,13 @@ private import semmle.javascript.dataflow.internal.sharedlib.FlowSummaryImpl as 
 private import semmle.javascript.dataflow.internal.FlowSummaryPrivate as FlowSummaryPrivate
 private import semmle.javascript.dataflow.internal.BarrierGuards
 private import semmle.javascript.dataflow.internal.sharedlib.Ssa as Ssa2
+private import codeql.util.Boolean
 
 cached
 predicate defaultAdditionalTaintStep(DataFlow::Node node1, DataFlow::Node node2) {
   TaintTracking::AdditionalTaintStep::step(node1, node2)
   or
-  FlowSummaryPrivate::Steps::summaryLocalStep(node1.(FlowSummaryNode).getSummaryNode(),
-    node2.(FlowSummaryNode).getSummaryNode(), false, _) // TODO: preserve 'model' parameter
+  FlowSummaryPrivate::Steps::summaryLocalStep(node1, node2, false, _) // TODO: preserve 'model' parameter
   or
   // Convert steps out of array elements to plain taint steps
   FlowSummaryPrivate::Steps::summaryReadStep(node1.(FlowSummaryNode).getSummaryNode(),
@@ -37,7 +37,7 @@ predicate defaultAdditionalTaintStep(DataFlow::Node node1, DataFlow::Node node2,
 }
 
 private predicate guardChecksFalsy(
-  Ssa2::SsaDataflowInput::Guard g, Ssa2::SsaDataflowInput::Expr e, boolean outcome
+  Ssa2::SsaDataflowInput::Guard g, Ssa2::SsaDataflowInput::Expr e, Boolean outcome
 ) {
   exists(ConditionGuardNode guard |
     guard.getTest() = g and

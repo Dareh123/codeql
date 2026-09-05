@@ -1,6 +1,8 @@
 /**
  * Provides classes and predicates for defining flow summaries.
  */
+overlay[local?]
+module;
 
 private import java
 private import codeql.dataflow.internal.FlowSummaryImpl
@@ -31,9 +33,17 @@ module Input implements InputSig<Location, DataFlowImplSpecific::JavaDataFlow> {
 
   class SummarizedCallableBase = FlowSummary::SummarizedCallableBase;
 
-  class SourceBase = Void;
+  predicate callableFromSource(SummarizedCallableBase sc) {
+    sc.asCallable() = any(Callable c | c.fromSource() and not c.isStub())
+  }
 
-  class SinkBase = Void;
+  class FlowSummaryCallBase extends Void {
+    Location getLocation() { none() }
+  }
+
+  DataFlowCallable getSummarizedCallableAsDataFlowCallable(SummarizedCallableBase c) {
+    result.asSummarizedCallable() = c
+  }
 
   predicate neutralElement(
     Input::SummarizedCallableBase c, string kind, string provenance, boolean isExact
@@ -102,7 +112,21 @@ module Input implements InputSig<Location, DataFlowImplSpecific::JavaDataFlow> {
 
 private import Make<Location, DataFlowImplSpecific::JavaDataFlow, Input> as Impl
 
-private module TypesInput implements Impl::Private::TypesInputSig {
+private module Input2 implements Impl::Private::InputSig2 {
+  private import codeql.util.Void
+
+  class SourceSinkReportingElement extends Void {
+    Location getLocation() { none() }
+
+    DataFlowCallable getEnclosingCallable() { none() }
+
+    SourceSinkReportingElement getASuccessor(Impl::Private::SummaryComponent sc) { none() }
+  }
+}
+
+private import Impl::Private::Make2<Input2> as Impl2
+
+private module TypesInput implements Impl2::TypesInputSig {
   DataFlowType getSyntheticGlobalType(Impl::Private::SyntheticGlobal sg) {
     exists(sg) and
     result instanceof TypeObject
@@ -130,21 +154,15 @@ private module TypesInput implements Impl::Private::TypesInputSig {
     exists(rk)
   }
 
-  DataFlowType getSourceType(Input::SourceBase source, Impl::Private::SummaryComponent sc) {
-    none()
-  }
-
-  DataFlowType getSinkType(Input::SinkBase sink, Impl::Private::SummaryComponent sc) { none() }
+  DataFlowType getSourceSinkType(Input2::SourceSinkReportingElement e) { none() }
 }
 
-private module StepsInput implements Impl::Private::StepsInputSig {
+private module StepsInput implements Impl2::StepsInputSig {
+  Impl2::SummaryNode getSummaryNode(Node n) { result = n.(FlowSummaryNode).getSummaryNode() }
+
   DataFlowCall getACall(Public::SummarizedCallable sc) {
     sc = viableCallable(result).asSummarizedCallable()
   }
-
-  Node getSourceNode(Input::SourceBase source, Impl::Private::SummaryComponent sc) { none() }
-
-  Node getSinkNode(Input::SinkBase sink, Impl::Private::SummaryComponent sc) { none() }
 }
 
 private predicate relatedArgSpec(Callable c, string spec) {
@@ -154,7 +172,9 @@ private predicate relatedArgSpec(Callable c, string spec) {
     summaryModel(namespace, type, subtypes, name, signature, ext, spec, _, _, _, _) or
     summaryModel(namespace, type, subtypes, name, signature, ext, _, spec, _, _, _) or
     sourceModel(namespace, type, subtypes, name, signature, ext, spec, _, _, _) or
-    sinkModel(namespace, type, subtypes, name, signature, ext, spec, _, _, _)
+    sinkModel(namespace, type, subtypes, name, signature, ext, spec, _, _, _) or
+    barrierModel(namespace, type, subtypes, name, signature, ext, spec, _, _, _) or
+    barrierGuardModel(namespace, type, subtypes, name, signature, ext, spec, _, _, _, _)
   |
     c = interpretElement(namespace, type, subtypes, name, signature, ext, _)
   )
@@ -222,11 +242,10 @@ module SourceSinkInterpretationInput implements
   ) {
     exists(
       string namespace, string type, boolean subtypes, string name, string signature, string ext,
-      SourceOrSinkElement baseSource, string originalOutput, QlBuiltins::ExtensionId madId
+      SourceOrSinkElement baseSource, string originalOutput
     |
       sourceModel(namespace, type, subtypes, name, signature, ext, originalOutput, kind, provenance,
-        madId) and
-      model = "MaD:" + madId.toString() and
+        model) and
       baseSource = interpretElement(namespace, type, subtypes, name, signature, ext, _) and
       (
         e = baseSource and output = originalOutput
@@ -241,16 +260,52 @@ module SourceSinkInterpretationInput implements
   ) {
     exists(
       string namespace, string type, boolean subtypes, string name, string signature, string ext,
-      SourceOrSinkElement baseSink, string originalInput, QlBuiltins::ExtensionId madId
+      SourceOrSinkElement baseSink, string originalInput
     |
       sinkModel(namespace, type, subtypes, name, signature, ext, originalInput, kind, provenance,
-        madId) and
-      model = "MaD:" + madId.toString() and
+        model) and
       baseSink = interpretElement(namespace, type, subtypes, name, signature, ext, _) and
       (
         e = baseSink and originalInput = input
         or
         correspondingKotlinParameterDefaultsArgSpec(baseSink, e, originalInput, input)
+      )
+    )
+  }
+
+  predicate barrierElement(
+    Element e, string output, string kind, Public::Provenance provenance, string model
+  ) {
+    exists(
+      string namespace, string type, boolean subtypes, string name, string signature, string ext,
+      SourceOrSinkElement baseBarrier, string originalOutput
+    |
+      barrierModel(namespace, type, subtypes, name, signature, ext, originalOutput, kind,
+        provenance, model) and
+      baseBarrier = interpretElement(namespace, type, subtypes, name, signature, ext, _) and
+      (
+        e = baseBarrier and output = originalOutput
+        or
+        correspondingKotlinParameterDefaultsArgSpec(baseBarrier, e, originalOutput, output)
+      )
+    )
+  }
+
+  predicate barrierGuardElement(
+    Element e, string input, Public::AcceptingValue acceptingValue, string kind,
+    Public::Provenance provenance, string model
+  ) {
+    exists(
+      string namespace, string type, boolean subtypes, string name, string signature, string ext,
+      SourceOrSinkElement baseBarrier, string originalInput
+    |
+      barrierGuardModel(namespace, type, subtypes, name, signature, ext, originalInput,
+        acceptingValue, kind, provenance, model) and
+      baseBarrier = interpretElement(namespace, type, subtypes, name, signature, ext, _) and
+      (
+        e = baseBarrier and input = originalInput
+        or
+        correspondingKotlinParameterDefaultsArgSpec(baseBarrier, e, originalInput, input)
       )
     )
   }
@@ -321,9 +376,10 @@ module SourceSinkInterpretationInput implements
 
 module Private {
   import Impl::Private
-  import Impl::Private::Types<TypesInput>
+  import Impl2
+  import Types<TypesInput>
 
-  module Steps = Impl::Private::Steps<StepsInput>;
+  module Steps = Impl2::Steps<StepsInput>;
 
   module External {
     import Impl::Private::External
@@ -339,12 +395,10 @@ module Private {
     ) {
       exists(
         string namespace, string type, boolean subtypes, string name, string signature, string ext,
-        string originalInput, string originalOutput, Callable baseCallable,
-        QlBuiltins::ExtensionId madId
+        string originalInput, string originalOutput, Callable baseCallable
       |
         summaryModel(namespace, type, subtypes, name, signature, ext, originalInput, originalOutput,
-          kind, provenance, madId) and
-        model = "MaD:" + madId.toString() and
+          kind, provenance, model) and
         baseCallable = interpretElement(namespace, type, subtypes, name, signature, ext, isExact) and
         (
           c.asCallable() = baseCallable and input = originalInput and output = originalOutput

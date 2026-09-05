@@ -108,7 +108,7 @@ namespace Semmle.Autobuild.Shared
         /// </summary>
         /// <param name="path">The relative path.</param>
         /// <returns>True iff the path was found.</returns>
-        public bool HasRelativePath(string path) => HasPath(Actions.PathCombine(RootDirectory, path));
+        public bool HasRelativePath(string path) => HasPath(Actions.PathJoin(RootDirectory, path));
 
         /// <summary>
         /// List of project/solution files to build.
@@ -182,8 +182,16 @@ namespace Semmle.Autobuild.Shared
                 if (ret is not null)
                     return ret;
 
+                // Then look for language specific solution files, e.g. `.slnx` files
+                if (Options.Language.SolutionExtension is string solutionExtension)
+                {
+                    ret = FindFiles(solutionExtension, f => new Solution<TAutobuildOptions>(this, f, false))?.ToList();
+                    if (ret is not null)
+                        return ret;
+                }
+
                 // Finally look for language specific project files, e.g. `.csproj` files
-                ret = FindFiles(this.Options.Language.ProjectExtension, f => new Project<TAutobuildOptions>(this, f))?.ToList();
+                ret = FindFiles(Options.Language.ProjectExtension, f => new Project<TAutobuildOptions>(this, f))?.ToList();
                 return ret ?? new List<IProjectOrSolution>();
             });
 

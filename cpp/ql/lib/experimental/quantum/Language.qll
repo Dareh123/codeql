@@ -8,14 +8,14 @@ module CryptoInput implements InputSig<Language::Location> {
 
   class LocatableElement = Language::Locatable;
 
-  class UnknownLocation = Language::UnknownDefaultLocation;
+  class UnknownLocation = Language::UnknownLocation;
 
   LocatableElement dfn_to_element(DataFlow::Node node) {
     result = node.asExpr() or
     result = node.asParameter() or
     result = node.asVariable() or
-    result = node.asDefiningArgument()
-    // TODO: do we need asIndirectExpr()?
+    result = node.asDefiningArgument() or
+    result = node.asIndirectExpr()
   }
 
   string locationToFileBaseNameAndLineNumberString(Location location) {
@@ -53,10 +53,10 @@ module ArtifactFlowConfig implements DataFlow::ConfigSig {
   }
 }
 
-module ArtifactFlow = DataFlow::Global<ArtifactFlowConfig>;
+module ArtifactFlow = TaintTracking::Global<ArtifactFlowConfig>;
 
 /**
- * Artifact output to node input configuration
+ * An artifact output to node input configuration
  */
 abstract class AdditionalFlowInputStep extends DataFlow::Node {
   abstract DataFlow::Node getOutput();
@@ -91,10 +91,15 @@ module GenericDataSourceFlowConfig implements DataFlow::ConfigSig {
 
 module GenericDataSourceFlow = TaintTracking::Global<GenericDataSourceFlowConfig>;
 
-private class ConstantDataSource extends Crypto::GenericConstantSourceInstance instanceof Literal {
-  ConstantDataSource() { this instanceof OpenSslGenericSourceCandidateLiteral }
-
-  override DataFlow::Node getOutputNode() { result.asExpr() = this }
+private class ConstantDataSource extends Crypto::GenericConstantSourceInstance instanceof OpenSslGenericSourceCandidateLiteral
+{
+  override DataFlow::Node getOutputNode() {
+    // OpenSSL algorithms may be referenced either by string name or by numeric ID:
+    // String names (e.g. "AES-256-CBC") appear in the AST as character pointer
+    // literals. For these we must use `asIndirectExpr`. Numeric IDs (e.g. NID_aes_256_cbc)
+    // appear as integer literals. For these, we must use `asExpr` to get the "value" node.
+    [result.asIndirectExpr(), result.asExpr()] = this
+  }
 
   override predicate flowsTo(Crypto::FlowAwareElement other) {
     // TODO: separate config to avoid blowing up data-flow analysis
@@ -103,29 +108,5 @@ private class ConstantDataSource extends Crypto::GenericConstantSourceInstance i
 
   override string getAdditionalDescription() { result = this.toString() }
 }
-
-module ArtifactUniversalFlowConfig implements DataFlow::ConfigSig {
-  predicate isSource(DataFlow::Node source) {
-    source = any(Crypto::ArtifactInstance artifact).getOutputNode()
-  }
-
-  predicate isSink(DataFlow::Node sink) {
-    sink = any(Crypto::FlowAwareElement other).getInputNode()
-  }
-
-  predicate isBarrierOut(DataFlow::Node node) {
-    node = any(Crypto::FlowAwareElement element).getInputNode()
-  }
-
-  predicate isBarrierIn(DataFlow::Node node) {
-    node = any(Crypto::FlowAwareElement element).getOutputNode()
-  }
-
-  predicate isAdditionalFlowStep(DataFlow::Node node1, DataFlow::Node node2) {
-    node1.(AdditionalFlowInputStep).getOutput() = node2
-  }
-}
-
-module ArtifactUniversalFlow = DataFlow::Global<ArtifactUniversalFlowConfig>;
 
 import OpenSSL.OpenSSL

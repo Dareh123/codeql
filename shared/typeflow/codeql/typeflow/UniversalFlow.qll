@@ -25,6 +25,8 @@
  * that subsequently calculated properties hold under the assumption that the
  * value is not null.
  */
+overlay[local?]
+module;
 
 private import codeql.util.Location
 private import codeql.util.Unit
@@ -42,6 +44,12 @@ signature module UniversalFlowInput<LocationSig Location> {
     /** Gets the location of this node. */
     Location getLocation();
   }
+
+  /**
+   * Gets an identifier for node `n`, if any. When no identifier is provided for `n`,
+   * the library falls back to location-based ranking.
+   */
+  default int getFlowNodeId(FlowNode n) { none() }
 
   /**
    * Holds if data can flow from `n1` to `n2` in one step.
@@ -147,17 +155,44 @@ module Make<LocationSig Location, UniversalFlowInput<Location> I> {
   private module RankEdge<Edge E> implements RankedEdge<E::Node> {
     private import E
 
+    private predicate needsNodeId(FlowNode n) { edge(n, _) }
+
+    private int getFlowNodeIdByLoc(FlowNode n) {
+      n =
+        rank[result](FlowNode n0, string filePath, int startline, int startcolumn |
+          needsNodeId(n0) and
+          not exists(getFlowNodeId(n0)) and
+          n0.getLocation().hasLocationInfo(filePath, startline, startcolumn, _, _)
+        |
+          n0 order by filePath, startline, startcolumn
+        )
+    }
+
+    private int getFlowNodeIdExt(FlowNode n) {
+      n =
+        rank[result](FlowNode n0, int a, int b |
+          needsNodeId(n0) and
+          a = 0 and
+          b = getFlowNodeId(n0)
+          or
+          a = 1 and
+          b = getFlowNodeIdByLoc(n0)
+        |
+          n0 order by a, b
+        )
+    }
+
     /**
      * Holds if `r` is a ranking of the incoming edges `(n1,n2)` to `n2`. The used
      * ordering is not necessarily total, so the ranking may have gaps.
      */
     private predicate edgeRank1(int r, FlowNode n1, Node n2) {
       n1 =
-        rank[r](FlowNode n, int startline, int startcolumn |
+        rank[r](FlowNode n, int id |
           edge(n, n2) and
-          n.getLocation().hasLocationInfo(_, startline, startcolumn, _, _)
+          id = getFlowNodeIdExt(n)
         |
-          n order by startline, startcolumn
+          n order by id
         )
     }
 

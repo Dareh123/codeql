@@ -3,7 +3,6 @@ import codeql.ruby.dataflow.internal.DataFlowPublic
 import codeql.ruby.dataflow.BarrierGuards
 import codeql.ruby.controlflow.CfgNodes
 import codeql.ruby.controlflow.ControlFlowGraph
-import codeql.ruby.controlflow.BasicBlocks
 import codeql.ruby.DataFlow
 import utils.test.InlineExpectationsTest
 
@@ -12,8 +11,8 @@ query predicate newStyleBarrierGuards(DataFlow::Node n) {
   n instanceof StringConstArrayInclusionCallBarrier
 }
 
-query predicate controls(CfgNode condition, BasicBlock bb, SuccessorTypes::ConditionalSuccessor s) {
-  exists(ConditionBlock cb |
+query predicate controls(CfgNode condition, BasicBlock bb, ConditionalSuccessor s) {
+  exists(BasicBlock cb |
     cb.edgeDominates(bb, s) and
     condition = cb.getLastNode()
   )

@@ -1,3 +1,6 @@
+overlay[local?]
+module;
+
 private import java
 private import semmle.code.java.dataflow.InstanceAccess
 private import semmle.code.java.dataflow.ExternalFlow
@@ -26,7 +29,7 @@ private predicate deadcode(Expr e) {
 module SsaFlow {
   module Impl = SsaImpl::DataFlowIntegration;
 
-  private predicate ssaDefAssigns(SsaExplicitUpdate def, Expr value) {
+  private predicate ssaDefAssigns(SsaExplicitWrite def, Expr value) {
     exists(VariableUpdate upd | upd = def.getDefiningExpr() |
       value = upd.(VariableAssign).getSource() or
       value = upd.(AssignOp) or
@@ -43,7 +46,7 @@ module SsaFlow {
     or
     exists(Parameter p |
       n = TExplicitParameterNode(p) and
-      result.(Impl::WriteDefSourceNode).getDefinition().(SsaImplicitInit).isParameterDefinition(p)
+      result.(Impl::WriteDefSourceNode).getDefinition().(SsaParameterInit).getParameter() = p
     )
     or
     ssaDefAssigns(result.(Impl::WriteDefSourceNode).getDefinition(), n.asExpr())
@@ -194,19 +197,6 @@ module Public {
       result = this.getImprovedTypeBound()
       or
       result = this.getType() and not exists(this.getImprovedTypeBound())
-    }
-
-    /**
-     * Holds if this element is at the specified location.
-     * The location spans column `startcolumn` of line `startline` to
-     * column `endcolumn` of line `endline` in file `filepath`.
-     * For more information, see
-     * [Locations](https://codeql.github.com/docs/writing-codeql-queries/providing-locations-in-codeql-queries/).
-     */
-    deprecated predicate hasLocationInfo(
-      string filepath, int startline, int startcolumn, int endline, int endcolumn
-    ) {
-      this.getLocation().hasLocationInfo(filepath, startline, startcolumn, endline, endcolumn)
     }
   }
 
@@ -449,7 +439,7 @@ module Private {
     result.asCallable() = n.(ImplicitInstanceAccess).getInstanceAccess().getEnclosingCallable() or
     result.asCallable() = n.(MallocNode).getClassInstanceExpr().getEnclosingCallable() or
     result = nodeGetEnclosingCallable(n.(ImplicitPostUpdateNode).getPreUpdateNode()) or
-    result.asSummarizedCallable() = n.(FlowSummaryNode).getSummarizedCallable() or
+    result = n.(FlowSummaryNode).getSummaryNode().getEnclosingCallable() or
     result.asCallable() = n.(CaptureNode).getSynthesizedCaptureNode().getEnclosingCallable() or
     result.asFieldScope() = n.(FieldValueNode).getField() or
     result.asCallable() = any(Expr e | n.(AdditionalNode).nodeAt(e, _)).getEnclosingCallable() or
@@ -507,7 +497,7 @@ module Private {
   /** A data flow node that occurs as the result of a `ReturnStmt`. */
   class ReturnNode extends Node {
     ReturnNode() {
-      exists(ReturnStmt ret | this.asExpr() = ret.getResult()) or
+      exists(ReturnStmt ret | this.asExpr() = ret.getExpr()) or
       this.(FlowSummaryNode).isReturn()
     }
 
@@ -541,7 +531,7 @@ module Private {
       result = this.getSummaryNode().getSummarizedCallable()
     }
 
-    override Location getLocation() { result = this.getSummarizedCallable().getLocation() }
+    override Location getLocation() { result = this.getSummaryNode().getLocation() }
 
     override string toString() { result = this.getSummaryNode().toString() }
 

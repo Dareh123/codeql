@@ -60,9 +60,9 @@ unsafe fn test_std_alloc_new_repeat_extend(v: usize) {
     let (k2, _offs2) = l3.extend(k1).unwrap();
     let _ = std::alloc::alloc(k2); // $ Alert[rust/uncontrolled-allocation-size]=arg1
     let (k3, _offs3) = k1.extend(l3).unwrap();
-    let _ = std::alloc::alloc(k3); // $ MISSING: Alert[rust/uncontrolled-allocation-size]=arg1 (https://github.com/github/codeql/pull/19658)
+    let _ = std::alloc::alloc(k3); // $ Alert[rust/uncontrolled-allocation-size]=arg1
     let _ = std::alloc::alloc(l3.extend_packed(k1).unwrap()); // $ Alert[rust/uncontrolled-allocation-size]=arg1
-    let _ = std::alloc::alloc(k1.extend_packed(l3).unwrap()); // $ MISSING: Alert[rust/uncontrolled-allocation-size]=arg1 (https://github.com/github/codeql/pull/19658)
+    let _ = std::alloc::alloc(k1.extend_packed(l3).unwrap()); // $ Alert[rust/uncontrolled-allocation-size]=arg1
 
     let l4 = std::alloc::Layout::array::<u8>(v).unwrap();
     let _ = std::alloc::alloc(l4); // $ Alert[rust/uncontrolled-allocation-size]=arg1
@@ -225,8 +225,8 @@ unsafe fn test_libc_alloc(v: usize) {
 }
 
 unsafe fn test_vectors(v: usize) {
-    let _ = Vec::<u64>::try_with_capacity(v).unwrap(); // $ MISSING: Alert[rust/uncontrolled-allocation-size]
-    let _ = Vec::<u64>::with_capacity(v); // $ MISSING: Alert[rust/uncontrolled-allocation-size]
+    let _ = Vec::<u64>::try_with_capacity(v).unwrap(); // $ Alert[rust/uncontrolled-allocation-size]=arg1
+    let _ = Vec::<u64>::with_capacity(v); // $ Alert[rust/uncontrolled-allocation-size]=arg1
     let _ = Vec::<u64>::try_with_capacity_in(v, std::alloc::Global).unwrap(); // $ Alert[rust/uncontrolled-allocation-size]=arg1
     let _ = Vec::<u64>::with_capacity_in(v, std::alloc::Global); // $ Alert[rust/uncontrolled-allocation-size]=arg1
 
@@ -237,6 +237,9 @@ unsafe fn test_vectors(v: usize) {
     let _ = v1.try_reserve_exact(v).unwrap(); // $ MISSING: Alert[rust/uncontrolled-allocation-size]
     v1.resize(v, 1); // $ MISSING: Alert[rust/uncontrolled-allocation-size]
     v1.set_len(v); // $ MISSING: Alert[rust/uncontrolled-allocation-size]
+
+    let mut v2 = vec![1, 2, 3, 4, 5, 6];
+    let _ = v2.split_off(v); // GOOD (any allocation is bounded by the initial size of the vector)
 
     let l2 = std::alloc::Layout::new::<[u64; 200]>();
     let m2 = std::ptr::NonNull::<u64>::new(std::alloc::alloc(l2).cast::<u64>()).unwrap();
@@ -309,6 +312,25 @@ fn test_examples() {
     allocate_buffer_good(std::env::args().nth(1).unwrap_or("0".to_string()));
 }
 
+extern crate alloc;
+
+unsafe fn test_non_sinks(a: usize) {
+    let b = a as u64;
+
+    let _ = Vec::from([a]);
+    let _ = std::vec::Vec::from([a]);
+    let _ = alloc::vec::Vec::from([a]);
+
+    let _ : Vec<usize> = From::from([a]);
+    let _ : std::vec::Vec<usize> = From::from([a]);
+    let _ : alloc::vec::Vec<usize> = From::from([a]);
+
+    let _ = i128 ::from(b);
+    let _ : i128 = From::from(b);
+
+    let _ = libc::malloc(a); // $ Alert[rust/uncontrolled-allocation-size]=arg1
+}
+
 // --- main ---
 
 fn main() {
@@ -324,6 +346,7 @@ fn main() {
         test_libc_alloc(v);
         test_vectors(v);
         test_examples();
+        test_non_sinks(v);
     }
 
     println!("--- end ---");

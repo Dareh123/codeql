@@ -9,6 +9,8 @@
  * @precision medium
  * @id cpp/uncontrolled-process-operation
  * @tags security
+ *       external/cwe/cwe-073
+ *       external/cwe/cwe-078
  *       external/cwe/cwe-114
  */
 
@@ -23,7 +25,7 @@ predicate isProcessOperationExplanation(DataFlow::Node arg, string processOperat
   exists(int processOperationArg, FunctionCall call |
     isProcessOperationArgument(processOperation, processOperationArg) and
     call.getTarget().getName() = processOperation and
-    call.getArgument(processOperationArg) = [arg.asExpr(), arg.asIndirectExpr()]
+    call.getArgument(processOperationArg) = arg.asIndirectExpr()
   )
 }
 

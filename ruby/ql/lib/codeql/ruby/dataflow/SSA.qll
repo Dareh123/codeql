@@ -1,6 +1,8 @@
 /**
  * Provides the module `Ssa` for working with static single assignment (SSA) form.
  */
+overlay[local]
+module;
 
 /**
  * Provides classes for working with static single assignment (SSA) form.
@@ -75,34 +77,6 @@ module Ssa {
      * ```
      */
     final VariableReadAccessCfgNode getAFirstRead() { SsaImpl::firstRead(this, result) }
-
-    /**
-     * Gets a last control-flow node that reads the value of this SSA definition.
-     * That is, a read that can reach the end of the enclosing CFG scope, or another
-     * SSA definition for the source variable, without passing through any other read.
-     *
-     * Example:
-     *
-     * ```rb
-     * def m b        # defines b_0
-     *   i = 0        # defines i_0
-     *   puts i
-     *   puts i + 1   # last read of i_0
-     *   if b         # last read of b_0
-     *     i = 1      # defines i_1
-     *     puts i
-     *     puts i + 1 # last read of i_1
-     *   else
-     *     i = 2      # defines i_2
-     *     puts i
-     *     puts i + 1 # last read of i_2
-     *   end
-     *                # defines i_3 = phi(i_1, i_2)
-     *   puts i       # last read of i3
-     * end
-     * ```
-     */
-    deprecated final VariableReadAccessCfgNode getALastRead() { SsaImpl::lastRead(this, result) }
 
     /**
      * Holds if `read1` and `read2` are adjacent reads of this SSA definition.
@@ -410,20 +384,7 @@ module Ssa {
       inp = SsaImpl::phiHasInputFromBlock(this, bb)
     }
 
-    private string getSplitString() {
-      result = this.getBasicBlock().getFirstNode().(CfgNodes::AstCfgNode).getSplitsString()
-    }
-
-    override string toString() {
-      exists(string prefix |
-        prefix = "[" + this.getSplitString() + "] "
-        or
-        not exists(this.getSplitString()) and
-        prefix = ""
-      |
-        result = prefix + "phi"
-      )
-    }
+    override string toString() { result = "phi" }
 
     /*
      * The location of a phi node is the same as the location of the first node

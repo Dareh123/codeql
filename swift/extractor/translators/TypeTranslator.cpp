@@ -88,6 +88,14 @@ codeql::ArraySliceType TypeTranslator::translateArraySliceType(const swift::Arra
   return entry;
 }
 
+codeql::InlineArrayType TypeTranslator::translateInlineArrayType(
+    const swift::InlineArrayType& type) {
+  auto entry = createTypeEntry(type);
+  entry.count_type = dispatcher.fetchLabel(type.getCountType());
+  entry.element_type = dispatcher.fetchLabel(type.getElementType());
+  return entry;
+}
+
 codeql::DictionaryType TypeTranslator::translateDictionaryType(const swift::DictionaryType& type) {
   auto entry = createTypeEntry(type);
   entry.key_type = dispatcher.fetchLabel(type.getKeyType());
@@ -225,8 +233,16 @@ codeql::BuiltinIntegerType TypeTranslator::translateBuiltinIntegerType(
   return entry;
 }
 
-codeql::OpenedArchetypeType TypeTranslator::translateOpenedArchetypeType(
-    const swift::OpenedArchetypeType& type) {
+codeql::BuiltinFixedArrayType TypeTranslator::translateBuiltinFixedArrayType(
+    const swift::BuiltinFixedArrayType& type) {
+  auto entry = createTypeEntry(type);
+  entry.size = dispatcher.fetchLabel(type.getSize());
+  entry.element_type = dispatcher.fetchLabel(type.getElementType());
+  return entry;
+}
+
+codeql::ExistentialArchetypeType TypeTranslator::translateExistentialArchetypeType(
+    const swift::ExistentialArchetypeType& type) {
   auto entry = createTypeEntry(type);
   fillArchetypeType(type, entry);
   return entry;
@@ -247,10 +263,6 @@ codeql::OpaqueTypeArchetypeType TypeTranslator::translateOpaqueTypeArchetypeType
 }
 
 codeql::ErrorType TypeTranslator::translateErrorType(const swift::ErrorType& type) {
-  return createTypeEntry(type);
-}
-
-codeql::UnresolvedType TypeTranslator::translateUnresolvedType(const swift::UnresolvedType& type) {
   return createTypeEntry(type);
 }
 

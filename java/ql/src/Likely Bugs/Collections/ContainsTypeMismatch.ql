@@ -99,14 +99,14 @@ predicate containerAccess(string package, string type, int p, string signature, 
 class MismatchedContainerAccess extends MethodCall {
   MismatchedContainerAccess() {
     exists(string package, string type, int i |
-      containerAccess(package, type, _, this.getCallee().getSignature(), i)
+      containerAccess(package, type, _, this.getCallee().getSignature(), pragma[only_bind_into](i))
     |
       this.getCallee()
           .getDeclaringType()
-          .getASourceSupertype*()
           .getSourceDeclaration()
+          .getASourceSupertype*()
           .hasQualifiedName(package, type) and
-      this.getCallee().getParameter(i).getType() instanceof TypeObject
+      this.getCallee().getParameter(pragma[only_bind_into](i)).getType() instanceof TypeObject
     )
   }
 
@@ -119,7 +119,7 @@ class MismatchedContainerAccess extends MethodCall {
       containerAccess(package, type, p, this.getCallee().getSignature(), i)
     |
       t = this.getCallee().getDeclaringType() and
-      t.getASourceSupertype*().getSourceDeclaration() = g and
+      t.getSourceDeclaration().getASourceSupertype*() = g and
       g.hasQualifiedName(package, type) and
       indirectlyInstantiates(t, g, p, result)
     )

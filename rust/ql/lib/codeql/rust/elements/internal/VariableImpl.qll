@@ -1,41 +1,13 @@
 private import rust
+private import codeql.namebinding.LocalNameBinding
 private import codeql.rust.controlflow.ControlFlowGraph
-private import codeql.rust.elements.internal.generated.ParentChild
+private import codeql.rust.internal.PathResolution as PathResolution
+private import codeql.rust.elements.internal.generated.ParentChild as ParentChild
+private import codeql.rust.elements.internal.AstNodeImpl::Impl as AstNodeImpl
 private import codeql.rust.elements.internal.PathImpl::Impl as PathImpl
-private import codeql.rust.elements.internal.PathExprBaseImpl::Impl as PathExprBaseImpl
 private import codeql.rust.elements.internal.FormatTemplateVariableAccessImpl::Impl as FormatTemplateVariableAccessImpl
-private import codeql.util.DenseRank
 
 module Impl {
-  /**
-   * A variable scope. Either a block `{ ... }`, the guard/rhs
-   * of a match arm, or the body of a closure.
-   */
-  abstract class VariableScope extends AstNode { }
-
-  class BlockExprScope extends VariableScope, BlockExpr { }
-
-  abstract class MatchArmScope extends VariableScope {
-    MatchArm arm;
-
-    bindingset[arm]
-    MatchArmScope() { exists(arm) }
-
-    Pat getPat() { result = arm.getPat() }
-  }
-
-  class MatchArmExprScope extends MatchArmScope {
-    MatchArmExprScope() { this = arm.getExpr() }
-  }
-
-  class MatchArmGuardScope extends MatchArmScope {
-    MatchArmGuardScope() { this = arm.getGuard() }
-  }
-
-  class ClosureBodyScope extends VariableScope {
-    ClosureBodyScope() { this = any(ClosureExpr ce).getBody() }
-  }
-
   private Pat getAPatAncestor(Pat p) {
     (p instanceof IdentPat or p instanceof OrPat) and
     exists(Pat p0 | result = p0.getParentPat() |
@@ -69,15 +41,15 @@ module Impl {
    * pattern.
    */
   cached
-  private predicate variableDecl(AstNode definingNode, Name name, string text) {
-    Cached::ref() and
+  predicate variableDecl(AstNode definingNode, Name name, string text) {
+    CachedStage::ref() and
     exists(SelfParam sp |
       name = sp.getName() and
       definingNode = name and
       text = name.getText() and
       // exclude self parameters from functions without a body as these are
       // trait method declarations without implementations
-      not exists(Function f | not f.hasBody() and f.getParamList().getSelfParam() = sp)
+      not exists(Function f | not f.hasBody() and f.getSelfParam() = sp)
     )
     or
     exists(IdentPat pat |
@@ -88,11 +60,7 @@ module Impl {
         not exists(getOutermostEnclosingOrPat(pat)) and definingNode = name
       ) and
       text = name.getText() and
-      // exclude for now anything starting with an uppercase character, which may be a reference to
-      // an enum constant (e.g. `None`). This excludes static and constant variables (UPPERCASE),
-      // which we don't appear to recognize yet anyway. This also assumes programmers follow the
-      // naming guidelines, which they generally do, but they're not enforced.
-      not text.charAt(0).isUppercase() and
+      not PathResolution::identPatIsResolvable(pat) and
       // exclude parameters from functions without a body as these are trait method declarations
       // without implementations
       not exists(Function f | not f.hasBody() and f.getAParam().getPat() = pat) and
@@ -101,31 +69,204 @@ module Impl {
     )
   }
 
+  /**
+   * `let` chains like
+   *
+   * ```rust
+   * if let x1 = ... && let x2 = ... && ... && let xn = ...  { ... }
+   * ```
+   *
+   * are parsed left-associatively, so the AST for the condition looks like
+   *
+   * ```rust
+   * ((let x1 = ... && let x2 = ...) && ...) && let xn = ...
+   * ```
+   *
+   * This, however, does not work with scoping and shadowing, so we instead treat
+   * `let` chains as if there is just a single root `&&` node with `n` children,
+   * skipping all intermediate `&&` nodes.
+   */
+  private module LetChains {
+    predicate isLetChainAncestor(LogicalAndExpr lae) {
+      lae.getAnOperand() instanceof LetExpr
+      or
+      isLetChainAncestor(lae.getLhs())
+    }
+
+    private predicate isLetChainRoot(LogicalAndExpr root) {
+      isLetChainAncestor(root) and
+      not root = any(LogicalAndExpr lae).getLhs()
+    }
+
+    private predicate leftMostChildOfLetChainRoot(LogicalAndExpr left, LogicalAndExpr root) {
+      isLetChainRoot(root) and
+      left = root.getLhs*() and
+      not left.getLhs() instanceof LogicalAndExpr
+    }
+
+    private AstNode getLetChainChild(LogicalAndExpr sub, LogicalAndExpr root, int i) {
+      leftMostChildOfLetChainRoot(sub, root) and
+      i = 1 and
+      result = sub.getRhs()
+      or
+      exists(LogicalAndExpr mid |
+        exists(getLetChainChild(mid, root, i - 1)) and
+        sub.getLhs() = mid and
+        result = sub.getRhs()
+      )
+    }
+
+    AstNode getLetChainChild(LogicalAndExpr lae, int i) {
+      exists(LogicalAndExpr left |
+        leftMostChildOfLetChainRoot(left, lae) and
+        i = 0 and
+        result = left.getLhs()
+      )
+      or
+      result = getLetChainChild(_, lae, i)
+    }
+  }
+
+  private import LetChains
+
+  private module Input implements LocalNameBindingInputSig<Location> {
+    private import rust as Rust
+
+    predicate cacheRevRef() {
+      (variableDecl(_, _, _) implies any())
+      or
+      (exists(VariableReadAccess a) implies any())
+      or
+      (exists(VariableWriteAccess a) implies any())
+      or
+      (exists(any(Variable v).getParameter()) implies any())
+    }
+
+    class AstNode = Rust::AstNode;
+
+    AstNode getChild(AstNode parent, int index) {
+      result = ParentChild::getImmediateChild(parent, index) and
+      not isLetChainAncestor(parent)
+      or
+      result = getLetChainChild(parent, index)
+      or
+      exists(Format f |
+        f = result.(FormatTemplateVariableAccess).getArgument().getParent() and
+        parent = f.getParent() and
+        index = f.getIndex()
+      )
+    }
+
+    abstract class Conditional extends AstNode {
+      abstract AstNode getCondition();
+
+      abstract AstNode getThen();
+
+      abstract AstNode getElse();
+    }
+
+    private class IfExprConditional extends Conditional instanceof IfExpr {
+      override AstNode getCondition() { result = IfExpr.super.getCondition() }
+
+      override AstNode getThen() { result = IfExpr.super.getThen() }
+
+      override AstNode getElse() { result = IfExpr.super.getElse() }
+    }
+
+    private class WhileExprConditional extends Conditional instanceof WhileExpr {
+      override AstNode getCondition() { result = WhileExpr.super.getCondition() }
+
+      override AstNode getThen() { result = WhileExpr.super.getLoopBody() }
+
+      override AstNode getElse() { none() }
+    }
+
+    private class MatchGuardConditional extends Conditional instanceof MatchGuard {
+      override AstNode getCondition() { result = MatchGuard.super.getCondition() }
+
+      override AstNode getThen() {
+        exists(MatchArm arm | this = arm.getGuard() and result = arm.getExpr())
+      }
+
+      override AstNode getElse() { none() }
+    }
+
+    abstract class SiblingShadowingDecl extends AstNode {
+      abstract AstNode getLhs();
+
+      abstract AstNode getRhs();
+
+      abstract AstNode getElse();
+    }
+
+    private class LetStmtSiblingShadowingDecl extends SiblingShadowingDecl instanceof LetStmt {
+      override AstNode getLhs() { result = LetStmt.super.getPat() }
+
+      override AstNode getRhs() { result = LetStmt.super.getInitializer() }
+
+      override AstNode getElse() { result = LetStmt.super.getLetElse() }
+    }
+
+    private class LetExprSiblingShadowingDecl extends SiblingShadowingDecl instanceof LetExpr {
+      override AstNode getLhs() { result = LetExpr.super.getPat() }
+
+      override AstNode getRhs() { result = LetExpr.super.getScrutinee() }
+
+      override AstNode getElse() { none() }
+    }
+
+    predicate declInScope(AstNode definingNode, string name, AstNode scope) {
+      // local variable
+      exists(Name n | variableDecl(definingNode, n, name) |
+        scope = any(SelfParam self | n = self.getName()).getCallable()
+        or
+        exists(Pat pat, Pat pat0 |
+          pat = getAPatAncestor*(pat0) and
+          (pat0 = definingNode or pat0.(IdentPat).getName() = n)
+        |
+          scope = any(MatchArm arm | pat = arm.getPat())
+          or
+          scope = any(Input::SiblingShadowingDecl let | pat = let.getLhs())
+          or
+          scope = any(ForExpr fe | pat = fe.getPat()).getLoopBody()
+          or
+          scope = any(Param p | pat = p.getPat()).getCallable()
+        )
+      )
+      or
+      // local function; behave as if they are defined at the beginning of the scope
+      definingNode = scope.(BlockExpr).getStmtList().getAStatement() and
+      name = definingNode.(Function).getName().getText()
+    }
+
+    predicate accessCand(AstNode n, string name) {
+      name = n.(PathExpr).getPath().(PathImpl::IdentPath).getName()
+      or
+      name = n.(FormatTemplateVariableAccess).getName()
+    }
+  }
+
+  private import LocalNameBinding<Location, Input>
+
   /** A variable. */
-  class Variable extends MkVariable {
-    private AstNode definingNode;
-    private string text;
-
-    Variable() { this = MkVariable(definingNode, text) }
-
-    /** Gets the name of this variable as a string. */
-    string getText() { result = text }
-
-    /** Gets the location of this variable. */
-    Location getLocation() { result = definingNode.getLocation() }
-
-    /** Gets a textual representation of this variable. */
-    string toString() { result = this.getText() }
+  class Variable extends Local {
+    Variable() { variableDecl(this.getDefiningNode(), _, _) }
 
     /** Gets an access to this variable. */
     VariableAccess getAnAccess() { result.getVariable() = this }
+
+    /** Gets the name of this variable. */
+    string getText() { result = super.getName() }
 
     /**
      * Get the name of this variable.
      *
      * Normally, the name is unique, except when introduced in an or pattern.
      */
-    Name getName() { variableDecl(definingNode, result, text) }
+    Name getName() { variableDecl(this.getDefiningNode(), result, super.getName()) }
+
+    /** Gets the block that encloses this variable, if any. */
+    BlockExpr getEnclosingBlock() { result = this.getDefiningNode().getEnclosingBlock() }
 
     /** Gets the `self` parameter that declares this variable, if any. */
     SelfParam getSelfParam() { result.getName() = this.getName() }
@@ -144,13 +285,27 @@ module Impl {
     IdentPat getPat() { result.getName() = this.getName() }
 
     /** Gets the enclosing CFG scope for this variable declaration. */
-    CfgScope getEnclosingCfgScope() { result = definingNode.getEnclosingCfgScope() }
+    CfgScope getEnclosingCfgScope() { result = this.getDefiningNode().getEnclosingCfgScope() }
 
-    /** Gets the `let` statement that introduces this variable, if any. */
+    /**
+     * Gets the `let` statement that introduces this variable, if any.
+     *
+     * This is restricted to simple `let` statements of the form `let x = ...;`.
+     */
     LetStmt getLetStmt() { this.getPat() = result.getPat() }
 
+    /**
+     * Gets the `let` expression that introduces this variable, if any.
+     *
+     * This is restricted to simple `let` expressions of the form `let x = ...`.
+     */
+    LetExpr getLetExpr() { this.getPat() = result.getPat() }
+
     /** Gets the initial value of this variable, if any. */
-    Expr getInitializer() { result = this.getLetStmt().getInitializer() }
+    Expr getInitializer() {
+      result = this.getLetStmt().getInitializer() or
+      result = this.getLetExpr().getScrutinee()
+    }
 
     /** Holds if this variable is captured. */
     predicate isCaptured() { this.getAnAccess().isCapture() }
@@ -158,458 +313,39 @@ module Impl {
     /** Gets the parameter that introduces this variable, if any. */
     cached
     ParamBase getParameter() {
-      Cached::ref() and
+      CachedStage::ref() and
       result = this.getSelfParam()
       or
-      result.(Param).getPat() = getAVariablePatAncestor(this)
+      result.(Param).getPat() = getAPatAncestor*(this.getPat())
     }
 
-    /** Hold is this variable is mutable. */
+    /** Holds if this variable is mutable. */
     predicate isMutable() { this.getPat().isMut() or this.getSelfParam().isMut() }
 
-    /** Hold is this variable is immutable. */
+    /** Holds if this variable is immutable. */
     predicate isImmutable() { not this.isMutable() }
   }
 
-  /**
-   * A path expression that may access a local variable. These are paths that
-   * only consist of a simple name (i.e., without generic arguments,
-   * qualifiers, etc.).
-   */
-  private class VariableAccessCand extends PathExprBase {
-    string name_;
-
-    VariableAccessCand() {
-      name_ = this.(PathExpr).getPath().(PathImpl::IdentPath).getName()
-      or
-      this.(FormatTemplateVariableAccess).getName() = name_
-    }
-
-    string toString() { result = name_ }
-
-    string getName() { result = name_ }
-  }
-
-  private AstNode getAnAncestorInVariableScope(AstNode n) {
-    (
-      n instanceof Pat or
-      n instanceof VariableAccessCand or
-      n instanceof LetStmt or
-      n instanceof VariableScope
-    ) and
-    exists(AstNode n0 |
-      result = getImmediateParent(n0) or
-      result = n0.(FormatTemplateVariableAccess).getArgument().getParent().getParent()
-    |
-      n0 = n
-      or
-      n0 = getAnAncestorInVariableScope(n) and
-      not n0 instanceof VariableScope
-    )
-  }
-
-  /** Gets the immediately enclosing variable scope of `n`. */
-  private VariableScope getEnclosingScope(AstNode n) { result = getAnAncestorInVariableScope(n) }
-
-  /**
-   * Get all the pattern ancestors of this variable up to an including the
-   * root of the pattern.
-   */
-  private Pat getAVariablePatAncestor(Variable v) {
-    result = v.getPat()
-    or
-    exists(Pat mid |
-      mid = getAVariablePatAncestor(v) and
-      result = mid.getParentPat()
-    )
-  }
-
-  /**
-   * Holds if a parameter declares the variable `v` inside variable scope `scope`.
-   */
-  private predicate parameterDeclInScope(Variable v, VariableScope scope) {
-    exists(Callable f |
-      v.getParameter() = f.getParamList().getAParamBase() and
-      scope = [f.(Function).getBody(), f.(ClosureExpr).getBody()]
-    )
-  }
-
-  /** A subset of `Element`s for which we want to compute pre-order numbers. */
-  private class RelevantElement extends Element {
-    RelevantElement() {
-      this instanceof VariableScope or
-      this instanceof VariableAccessCand or
-      this instanceof LetStmt or
-      getImmediateChild(this, _) instanceof RelevantElement
-    }
-
-    pragma[nomagic]
-    private RelevantElement getChild(int index) { result = getImmediateChild(this, index) }
-
-    pragma[nomagic]
-    private RelevantElement getImmediateChildMin(int index) {
-      // A child may have multiple positions for different accessors,
-      // so always use the first
-      result = this.getChild(index) and
-      index = min(int i | result = this.getChild(i) | i)
-    }
-
-    pragma[nomagic]
-    RelevantElement getImmediateChild(int index) {
-      result =
-        rank[index + 1](Element res, int i | res = this.getImmediateChildMin(i) | res order by i)
-    }
-
-    pragma[nomagic]
-    RelevantElement getImmediateLastChild() {
-      exists(int last |
-        result = this.getImmediateChild(last) and
-        not exists(this.getImmediateChild(last + 1))
-      )
-    }
-  }
-
-  /**
-   * Gets the pre-order numbering of `n`, where the immediately enclosing
-   * variable scope of `n` is `scope`.
-   */
-  pragma[nomagic]
-  private int getPreOrderNumbering(VariableScope scope, RelevantElement n) {
-    n = scope and
-    result = 0
-    or
-    exists(RelevantElement parent |
-      not parent instanceof VariableScope
-      or
-      parent = scope
-    |
-      // first child of a previously numbered node
-      result = getPreOrderNumbering(scope, parent) + 1 and
-      n = parent.getImmediateChild(0)
-      or
-      // non-first child of a previously numbered node
-      exists(RelevantElement child, int i |
-        result = getLastPreOrderNumbering(scope, child) + 1 and
-        child = parent.getImmediateChild(i) and
-        n = parent.getImmediateChild(i + 1)
-      )
-    )
-  }
-
-  /**
-   * Gets the pre-order numbering of the _last_ node nested under `n`, where the
-   * immediately enclosing variable scope of `n` (and the last node) is `scope`.
-   */
-  pragma[nomagic]
-  private int getLastPreOrderNumbering(VariableScope scope, RelevantElement n) {
-    exists(RelevantElement leaf |
-      result = getPreOrderNumbering(scope, leaf) and
-      leaf != scope and
-      (
-        not exists(leaf.getImmediateChild(_))
-        or
-        leaf instanceof VariableScope
-      )
-    |
-      n = leaf
-      or
-      n.getImmediateLastChild() = leaf and
-      not n instanceof VariableScope
-    )
-    or
-    exists(RelevantElement mid |
-      mid = n.getImmediateLastChild() and
-      result = getLastPreOrderNumbering(scope, mid) and
-      not mid instanceof VariableScope and
-      not n instanceof VariableScope
-    )
-  }
-
-  /**
-   * Holds if `v` is named `name` and is declared inside variable scope
-   * `scope`. The pre-order numbering of the binding site of `v`, amongst
-   * all nodes nester under `scope`, is `ord`.
-   */
-  private predicate variableDeclInScope(Variable v, VariableScope scope, string name, int ord) {
-    name = v.getText() and
-    (
-      parameterDeclInScope(v, scope) and
-      ord = getPreOrderNumbering(scope, scope)
-      or
-      exists(Pat pat | pat = getAVariablePatAncestor(v) |
-        scope =
-          any(MatchArmScope arm |
-            arm.getPat() = pat and
-            ord = getPreOrderNumbering(scope, arm)
-          )
-        or
-        exists(LetStmt let |
-          let.getPat() = pat and
-          scope = getEnclosingScope(let) and
-          // for `let` statements, variables are bound _after_ the statement, i.e.
-          // not in the RHS
-          ord = getLastPreOrderNumbering(scope, let) + 1
-        )
-        or
-        exists(IfExpr ie, LetExpr let |
-          let.getPat() = pat and
-          ie.getCondition() = let and
-          scope = ie.getThen() and
-          ord = getPreOrderNumbering(scope, scope)
-        )
-        or
-        exists(ForExpr fe |
-          fe.getPat() = pat and
-          scope = fe.getLoopBody() and
-          ord = getPreOrderNumbering(scope, scope)
-        )
-        or
-        exists(WhileExpr we, LetExpr let |
-          let.getPat() = pat and
-          we.getCondition() = let and
-          scope = we.getLoopBody() and
-          ord = getPreOrderNumbering(scope, scope)
-        )
-      )
-    )
-  }
-
-  /**
-   * Holds if `cand` may access a variable named `name` at pre-order number `ord`
-   * in the variable scope `scope`.
-   *
-   * `nestLevel` is the number of nested scopes that need to be traversed
-   * to reach `scope` from `cand`.
-   */
-  private predicate variableAccessCandInScope(
-    VariableAccessCand cand, VariableScope scope, string name, int nestLevel, int ord
-  ) {
-    name = cand.getName() and
-    scope = [cand.(VariableScope), getEnclosingScope(cand)] and
-    ord = getPreOrderNumbering(scope, cand) and
-    nestLevel = 0
-    or
-    exists(VariableScope inner |
-      variableAccessCandInScope(cand, inner, name, nestLevel - 1, _) and
-      scope = getEnclosingScope(inner) and
-      // Use the pre-order number of the inner scope as the number of the access. This allows
-      // us to collapse multiple accesses in inner scopes to a single entity
-      ord = getPreOrderNumbering(scope, inner)
-    )
-  }
-
-  private newtype TDefOrAccessCand =
-    TDefOrAccessCandNestedFunction(Function f, BlockExprScope scope) {
-      f = scope.getStmtList().getAStatement()
-    } or
-    TDefOrAccessCandVariable(Variable v) or
-    TDefOrAccessCandVariableAccessCand(VariableAccessCand va)
-
-  /**
-   * A nested function declaration, variable declaration, or variable (or function)
-   * access candidate.
-   *
-   * In order to determine whether a candidate is an actual variable/function access,
-   * we rank declarations and candidates by their position in the AST.
-   *
-   * The ranking must take names into account, but also variable scopes; below a comment
-   * `rank(scope, name, i)` means that the declaration/access on the given line has rank
-   * `i` amongst all declarations/accesses inside variable scope `scope`, for name `name`:
-   *
-   * ```rust
-   * fn f() {           // scope0
-   *     let x = 0;     // rank(scope0, "x", 0)
-   *     use(x);        // rank(scope0, "x", 1)
-   *     let x =        // rank(scope0, "x", 3)
-   *         x + 1;     // rank(scope0, "x", 2)
-   *     let y =        // rank(scope0, "y", 0)
-   *         x;         // rank(scope0, "x", 4)
-   *
-   *     {              // scope1
-   *         use(x);    // rank(scope1, "x", 0), rank(scope0, "x", 4)
-   *         use(y);    // rank(scope1, "y", 0), rank(scope0, "y", 1)
-   *         let x = 2; // rank(scope1, "x", 1)
-   *         use(x);    // rank(scope1, "x", 2), rank(scope0, "x", 4)
-   *     }
-   * }
-   * ```
-   *
-   * Function/variable declarations are only ranked in the scope that they bind into,
-   * while accesses candidates propagate outwards through scopes, as they may access
-   * declarations from outer scopes.
-   *
-   * For an access candidate with ranks `{ rank(scope_i, name, rnk_i) | i in I }` and
-   * declarations `d in D` with ranks `rnk(scope_d, name, rnk_d)`,  the target is
-   * calculated as
-   * ```
-   * max_{i in I} (
-   *   max_{d in D | scope_d = scope_i and rnk_d < rnk_i} (
-   *     d
-   *   )
-   * )
-   * ```
-   *
-   * i.e., its the nearest declaration before the access in the same (or outer) scope
-   * as the access.
-   */
-  abstract private class DefOrAccessCand extends TDefOrAccessCand {
-    abstract string toString();
-
-    abstract Location getLocation();
-
-    pragma[nomagic]
-    abstract predicate rankBy(string name, VariableScope scope, int ord, int kind);
-  }
-
-  abstract private class NestedFunctionOrVariable extends DefOrAccessCand { }
-
-  private class DefOrAccessCandNestedFunction extends NestedFunctionOrVariable,
-    TDefOrAccessCandNestedFunction
-  {
-    private Function f;
-    private BlockExprScope scope_;
-
-    DefOrAccessCandNestedFunction() { this = TDefOrAccessCandNestedFunction(f, scope_) }
-
-    override string toString() { result = f.toString() }
-
-    override Location getLocation() { result = f.getLocation() }
-
-    override predicate rankBy(string name, VariableScope scope, int ord, int kind) {
-      // nested functions behave as if they are defined at the beginning of the scope
-      name = f.getName().getText() and
-      scope = scope_ and
-      ord = 0 and
-      kind = 0
-    }
-  }
-
-  private class DefOrAccessCandVariable extends NestedFunctionOrVariable, TDefOrAccessCandVariable {
-    private Variable v;
-
-    DefOrAccessCandVariable() { this = TDefOrAccessCandVariable(v) }
-
-    override string toString() { result = v.toString() }
-
-    override Location getLocation() { result = v.getLocation() }
-
-    override predicate rankBy(string name, VariableScope scope, int ord, int kind) {
-      variableDeclInScope(v, scope, name, ord) and
-      kind = 1
-    }
-  }
-
-  private class DefOrAccessCandVariableAccessCand extends DefOrAccessCand,
-    TDefOrAccessCandVariableAccessCand
-  {
-    private VariableAccessCand va;
-
-    DefOrAccessCandVariableAccessCand() { this = TDefOrAccessCandVariableAccessCand(va) }
-
-    override string toString() { result = va.toString() }
-
-    override Location getLocation() { result = va.getLocation() }
-
-    override predicate rankBy(string name, VariableScope scope, int ord, int kind) {
-      variableAccessCandInScope(va, scope, name, _, ord) and
-      kind = 2
-    }
-  }
-
-  private module DenseRankInput implements DenseRankInputSig2 {
-    class C1 = VariableScope;
-
-    class C2 = string;
-
-    class Ranked = DefOrAccessCand;
-
-    int getRank(VariableScope scope, string name, DefOrAccessCand v) {
-      v =
-        rank[result](DefOrAccessCand v0, int ord, int kind |
-          v0.rankBy(name, scope, ord, kind)
-        |
-          v0 order by ord, kind
-        )
-    }
-  }
-
-  /**
-   * Gets the rank of `v` amongst all other declarations or access candidates
-   * to a variable named `name` in the variable scope `scope`.
-   */
-  private int rankVariableOrAccess(VariableScope scope, string name, DefOrAccessCand v) {
-    v = DenseRank2<DenseRankInput>::denseRank(scope, name, result + 1)
-  }
-
-  /**
-   * Holds if `v` can reach rank `rnk` in the variable scope `scope`. This is needed to
-   * take shadowing into account, for example in
-   *
-   * ```rust
-   * let x = 0;  // rank 0
-   * use(x);     // rank 1
-   * let x = ""; // rank 2
-   * use(x);     // rank 3
-   * ```
-   *
-   * the declaration at rank 0 can only reach the access at rank 1, while the declaration
-   * at rank 2 can only reach the access at rank 3.
-   */
-  private predicate variableReachesRank(
-    VariableScope scope, string name, NestedFunctionOrVariable v, int rnk
-  ) {
-    rnk = rankVariableOrAccess(scope, name, v)
-    or
-    variableReachesRank(scope, name, v, rnk - 1) and
-    rnk = rankVariableOrAccess(scope, name, TDefOrAccessCandVariableAccessCand(_))
-  }
-
-  private predicate variableReachesCand(
-    VariableScope scope, string name, NestedFunctionOrVariable v, VariableAccessCand cand,
-    int nestLevel
-  ) {
-    exists(int rnk |
-      variableReachesRank(scope, name, v, rnk) and
-      rnk = rankVariableOrAccess(scope, name, TDefOrAccessCandVariableAccessCand(cand)) and
-      variableAccessCandInScope(cand, scope, name, nestLevel, _)
-    )
-  }
-
-  pragma[nomagic]
-  predicate access(string name, NestedFunctionOrVariable v, VariableAccessCand cand) {
-    v =
-      min(NestedFunctionOrVariable v0, int nestLevel |
-        variableReachesCand(_, name, v0, cand, nestLevel)
-      |
-        v0 order by nestLevel
-      )
-  }
-
   /** A variable access. */
-  class VariableAccess extends PathExprBaseImpl::PathExprBase {
-    private string name;
-    private Variable v;
-
-    VariableAccess() { variableAccess(name, v, this) }
+  class VariableAccess extends LocalAccess {
+    VariableAccess() { this.getLocal() instanceof Variable }
 
     /** Gets the variable being accessed. */
-    Variable getVariable() { result = v }
+    Variable getVariable() { result = super.getLocal() }
 
     /** Holds if this access is a capture. */
-    predicate isCapture() { this.getEnclosingCfgScope() != v.getEnclosingCfgScope() }
-
-    override string toStringImpl() { result = name }
-
-    override string getAPrimaryQlClass() { result = "VariableAccess" }
+    predicate isCapture() {
+      this.getEnclosingCfgScope() != this.getVariable().getEnclosingCfgScope()
+    }
   }
 
-  /** Holds if `e` occurs in the LHS of an assignment or compound assignment. */
-  private predicate assignmentExprDescendant(Expr e) {
-    e = any(AssignmentExpr ae).getLhs()
+  /** Holds if `e` occurs in the LHS of an assignment operation. */
+  predicate assignmentOperationDescendant(AssignmentOperation ao, Expr e) {
+    e = ao.getLhs()
     or
     exists(Expr mid |
-      assignmentExprDescendant(mid) and
-      getImmediateParent(e) = mid and
+      assignmentOperationDescendant(ao, mid) and
+      mid = e.getParentNode() and
       not mid instanceof DerefExpr and
       not mid instanceof FieldExpr and
       not mid instanceof IndexExpr
@@ -618,18 +354,23 @@ module Impl {
 
   /** A variable write. */
   class VariableWriteAccess extends VariableAccess {
+    private AssignmentExpr ae;
+
     cached
     VariableWriteAccess() {
-      Cached::ref() and
-      assignmentExprDescendant(this)
+      CachedStage::ref() and
+      assignmentOperationDescendant(ae, this)
     }
+
+    /** Gets the assignment expression that has this write access in the left-hand side. */
+    AssignmentExpr getAssignmentExpr() { result = ae }
   }
 
   /** A variable read. */
   class VariableReadAccess extends VariableAccess {
     cached
     VariableReadAccess() {
-      Cached::ref() and
+      CachedStage::ref() and
       not this instanceof VariableWriteAccess and
       not this = any(RefExpr re).getExpr() and
       not this = any(CompoundAssignmentExpr cae).getLhs()
@@ -637,47 +378,12 @@ module Impl {
   }
 
   /** A nested function access. */
-  class NestedFunctionAccess extends PathExprBaseImpl::PathExprBase {
+  class NestedFunctionAccess extends LocalAccess {
     private Function f;
 
-    NestedFunctionAccess() { nestedFunctionAccess(_, f, this) }
+    NestedFunctionAccess() { f = super.getLocal().getDefiningNode() }
 
     /** Gets the function being accessed. */
     Function getFunction() { result = f }
   }
-
-  cached
-  private module Cached {
-    cached
-    predicate ref() { 1 = 1 }
-
-    cached
-    predicate backref() {
-      1 = 1
-      or
-      variableDecl(_, _, _)
-      or
-      exists(VariableReadAccess a)
-      or
-      exists(VariableWriteAccess a)
-      or
-      exists(any(Variable v).getParameter())
-    }
-
-    cached
-    newtype TVariable =
-      MkVariable(AstNode definingNode, string name) { variableDecl(definingNode, _, name) }
-
-    cached
-    predicate variableAccess(string name, Variable v, VariableAccessCand cand) {
-      access(name, TDefOrAccessCandVariable(v), cand)
-    }
-
-    cached
-    predicate nestedFunctionAccess(string name, Function f, VariableAccessCand cand) {
-      access(name, TDefOrAccessCandNestedFunction(f, _), cand)
-    }
-  }
-
-  private import Cached
 }

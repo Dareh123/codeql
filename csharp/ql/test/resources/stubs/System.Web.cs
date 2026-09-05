@@ -178,6 +178,13 @@ namespace System.Web
         public string RawUrl { get; set; }
         public HttpCookieCollection Cookies => null;
         public bool IsAuthenticated { get; set; }
+        public NameValueCollection Form { get; }
+        public NameValueCollection Headers { get; }
+        public NameValueCollection Params { get; }
+        public string UserAgent { get; }
+        public Uri UrlReferrer { get; }
+        public NameValueCollection ServerVariables { get; }
+        public String this[String key] => null;
     }
 
     public class HttpRequestWrapper : System.Web.HttpRequestBase
@@ -446,4 +453,9 @@ namespace System.Web.Script.Serialization
     {
         public SimpleTypeResolver() => throw null;
     }
+}
+
+namespace System.Web.Services
+{
+    public class WebMethodAttribute : Attribute { }
 }

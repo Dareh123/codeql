@@ -3,7 +3,7 @@
  * @description A table of summary statistics about a database.
  * @kind metric
  * @id rust/summary/summary-statistics
- * @tags summary
+ * @tags summary telemetry
  */
 
 import rust
@@ -14,6 +14,8 @@ where
   elementStats(key, value)
   or
   extractionStats(key, value)
+  or
+  extractionStatsExtra(key, value)
   or
   inconsistencyStats(key, value)
   or

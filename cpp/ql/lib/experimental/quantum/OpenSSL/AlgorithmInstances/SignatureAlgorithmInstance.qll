@@ -47,7 +47,8 @@ class KnownOpenSslSignatureConstantAlgorithmInstance extends OpenSslAlgorithmIns
       // Sink is an argument to a signature getter call
       sink = getterCall.getInputNode() and
       // Source is `this`
-      src.asExpr() = this and
+      // NOTE: src literals can be ints or strings, so need to consider asExpr and asIndirectExpr
+      this = [src.asExpr(), src.asIndirectExpr()] and
       // This traces to a getter
       KnownOpenSslAlgorithmToAlgorithmValueConsumerFlow::flow(src, sink)
     )
@@ -73,7 +74,7 @@ class KnownOpenSslSignatureConstantAlgorithmInstance extends OpenSslAlgorithmIns
     none()
   }
 
-  override KeyOpAlg::Algorithm getAlgorithmType() {
+  override KeyOpAlg::AlgorithmType getAlgorithmType() {
     knownOpenSslConstantToSignatureFamilyType(this, result)
     or
     not knownOpenSslConstantToSignatureFamilyType(this, _) and

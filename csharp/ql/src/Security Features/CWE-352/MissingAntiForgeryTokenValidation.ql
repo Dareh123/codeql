@@ -15,6 +15,7 @@ import csharp
 import semmle.code.csharp.frameworks.system.Web
 import semmle.code.csharp.frameworks.system.web.Helpers
 import semmle.code.csharp.frameworks.system.web.Mvc
+import semmle.code.csharp.frameworks.microsoft.AspNetCore as AspNetCore
 
 private Method getAValidatingMethod() {
   result = any(AntiForgeryClass a).getValidateMethod()
@@ -35,6 +36,8 @@ private Method getAStartedMethod() {
 
 /**
  * Holds if the project has a global anti forgery filter.
+ *
+ * No AspNetCore case here as the corresponding class doesn't seem to exist.
  */
 predicate hasGlobalAntiForgeryFilter() {
   // A global filter added
@@ -48,16 +51,123 @@ predicate hasGlobalAntiForgeryFilter() {
   )
 }
 
-from Controller c, Method postMethod
+private class RequireAntiforgeryTokenAttribute extends Attribute {
+  RequireAntiforgeryTokenAttribute() {
+    this.getType()
+        .hasFullyQualifiedName("Microsoft.AspNetCore.Antiforgery",
+          "RequireAntiforgeryTokenAttribute")
+  }
+
+  predicate requiresValidation() {
+    not exists(this.getArgument(0))
+    or
+    this.getArgument(0).isImplicit()
+    or
+    this.getArgument(0).getValue() = "true"
+  }
+}
+
+private predicate hasAspNetCoreAntiForgeryMiddleware() {
+  exists(MethodCall call |
+    call.getTarget()
+        .hasFullyQualifiedName("Microsoft.AspNetCore.Builder",
+          "AntiforgeryApplicationBuilderExtensions", "UseAntiforgery")
+  )
+}
+
+private RequireAntiforgeryTokenAttribute getEffectiveRequireAntiforgeryTokenAttributeOnMethod(
+  Method method
+) {
+  exists(Method attributedMethod |
+    attributedMethod = method.getOverridee*() and
+    result = attributedMethod.getAnAttribute() and
+    not exists(Method closerMethod |
+      closerMethod = method.getOverridee*() and
+      closerMethod.getOverridee+() = attributedMethod and
+      closerMethod.getAnAttribute() instanceof RequireAntiforgeryTokenAttribute
+    )
+  )
+}
+
+private RequireAntiforgeryTokenAttribute getEffectiveRequireAntiforgeryTokenAttributeOnClass(
+  Class controller
+) {
+  exists(Class attributedClass |
+    attributedClass = controller.getBaseClass*() and
+    result = attributedClass.getAnAttribute() and
+    not exists(Class closerClass |
+      closerClass = controller.getBaseClass*() and
+      closerClass.getBaseClass+() = attributedClass and
+      closerClass.getAnAttribute() instanceof RequireAntiforgeryTokenAttribute
+    )
+  )
+}
+
+class MvcControllerPostMethod extends Method {
+  private Controller controller;
+
+  MvcControllerPostMethod() { controller.getAPostActionMethod() = this }
+
+  predicate hasValidateAntiForgeryAttribute() {
+    this.getAnAttribute() instanceof ValidateAntiForgeryTokenAttribute or
+    controller.getABaseType*().getAnAttribute() instanceof ValidateAntiForgeryTokenAttribute
+  }
+}
+
+class AspNetCoreControllerPostMethod extends Method {
+  private AspNetCore::MicrosoftAspNetCoreMvcController controller;
+
+  AspNetCoreControllerPostMethod() {
+    controller.getAnActionMethod() = this and
+    this.getAnAttribute() instanceof AspNetCore::MicrosoftAspNetCoreMvcHttpPostAttribute
+  }
+
+  predicate hasValidateAntiForgeryAttribute() {
+    this.getAnAttribute() instanceof AspNetCore::ValidateAntiForgeryAttribute or
+    controller.getABaseType*().getAnAttribute() instanceof AspNetCore::ValidateAntiForgeryAttribute
+  }
+
+  predicate hasRequireAntiForgeryAttribute() {
+    hasAspNetCoreAntiForgeryMiddleware() and
+    (
+      getEffectiveRequireAntiforgeryTokenAttributeOnMethod(this).requiresValidation()
+      or
+      not exists(getEffectiveRequireAntiforgeryTokenAttributeOnMethod(this)) and
+      getEffectiveRequireAntiforgeryTokenAttributeOnClass(controller).requiresValidation()
+    )
+  }
+}
+
+predicate isUnvalidatedAspNetCorePostMethod(AspNetCoreControllerPostMethod m) {
+  not m.hasValidateAntiForgeryAttribute() and
+  not m.hasRequireAntiForgeryAttribute()
+}
+
+predicate isUnvalidatedMvcPostMethod(MvcControllerPostMethod m) {
+  not m.hasValidateAntiForgeryAttribute()
+}
+
+predicate isUnvalidatedPostMethod(Method m) {
+  isUnvalidatedMvcPostMethod(m) or
+  isUnvalidatedAspNetCorePostMethod(m)
+}
+
+Element getAValidatedElement() {
+  any(ValidateAntiForgeryTokenAttribute a).getTarget() = result
+  or
+  any(AspNetCore::ValidateAntiForgeryAttribute a).getTarget() = result
+  or
+  hasAspNetCoreAntiForgeryMiddleware() and
+  any(RequireAntiforgeryTokenAttribute a | a.requiresValidation()).getTarget() = result
+}
+
+from Method postMethod
 where
-  postMethod = c.getAPostActionMethod() and
-  // The method is not protected by a validate anti forgery token attribute
-  not postMethod.getAnAttribute() instanceof ValidateAntiForgeryTokenAttribute and
-  not c.getAnAttribute() instanceof ValidateAntiForgeryTokenAttribute and
+  isUnvalidatedPostMethod(postMethod) and
   // Verify that validate anti forgery token attributes are used somewhere within this project, to
   // avoid reporting false positives on projects that use an alternative approach to mitigate CSRF
   // issues.
-  exists(ValidateAntiForgeryTokenAttribute a, Element e | e = a.getTarget()) and
+  exists(getAValidatedElement()) and
   // Also ignore cases where a global anti forgery filter is in use.
   not hasGlobalAntiForgeryFilter()
 select postMethod,

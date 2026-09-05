@@ -103,33 +103,37 @@ def make_patches_from_log_file(log_file_lines) -> List[Patch]:
         line = parse_log_line(raw_line)
 
         if line == "--- expected":
-            while True:
-                next_line = parse_log_line(next(lines))
-                if next_line == "+++ actual":
-                    break
+            try:
+                while True:
+                    next_line = parse_log_line(next(lines))
+                    if next_line == "+++ actual":
+                        break
 
-            lines_changed = []
+                lines_changed = []
 
-            while True:
-                next_line = parse_log_line(next(lines))
-                # it can be the case that
-                if next_line and next_line[0] in (" ", "-", "+", "@"):
-                    lines_changed.append(next_line)
-                if "FAILED" in next_line:
-                    break
+                while True:
+                    next_line = parse_log_line(next(lines))
+                    # it can be the case that
+                    if next_line and next_line[0] in (" ", "-", "+", "@"):
+                        lines_changed.append(next_line)
+                    if "FAILED" in next_line:
+                        break
 
-            # error line _should_ be next, but sometimes the output gets interleaved...
-            # so we just skip until we find the error line
-            error_line = next_line
-            while True:
-                # internal
-                filename_match = re.fullmatch(r"^##\[error\].*FAILED\(RESULT\) (.*)$", error_line)
-                if not filename_match:
-                    # codeql action
-                    filename_match = re.fullmatch(r"^.*FAILED\(RESULT\) (.*)$", error_line)
-                if filename_match:
-                    break
-                error_line = parse_log_line(next(lines))
+                # error line _should_ be next, but sometimes the output gets interleaved...
+                # so we just skip until we find the error line
+                error_line = next_line
+                while True:
+                    # internal
+                    filename_match = re.fullmatch(r"^##\[error\].*FAILED\(RESULT\) (.*)$", error_line)
+                    if not filename_match:
+                        # codeql action
+                        filename_match = re.fullmatch(r"^.*FAILED\(RESULT\) (.*)$", error_line)
+                    if filename_match:
+                        break
+                    error_line = parse_log_line(next(lines))
+            except StopIteration:
+                LOGGER.warning("Encountered unexpected end of logs while parsing failure block.")
+                break
 
             full_path = filename_match.group(1)
 
@@ -204,7 +208,7 @@ def get_log_content(status: GithubStatus) -> str:
     LOGGER.debug(f"'{status.context}': Getting logs")
     if status.job_ids:
         contents = [subprocess.check_output(
-            ["gh", "api", f"/repos/{status.nwo}/actions/jobs/{job_id}/logs"],
+            ["gh", "api", f"/repos/{status.nwo}/actions/jobs/{job_id}/logs", "--allow-escape-sequences"],
         ).decode("utf-8") for job_id in status.job_ids]
         content = "\n".join(contents)
     else:
@@ -271,7 +275,7 @@ def main(pr_number: Optional[int], sha_override: Optional[str] = None, force=Fal
 
     lang_test_failures: List[GithubStatus] = list()
     for status in newest_status.values():
-        if " Language Tests" in status.context or status.context in supported_internal_status_language_test_names:
+        if " Language Tests" in status.context and not " Language Tests Windows" in status.context or status.context in supported_internal_status_language_test_names:
             if status.state == "failure":
                 lang_test_failures.append(status)
             elif status.state == "pending":

@@ -41,6 +41,7 @@ ql/javascript/ql/src/Security/CWE-116/IncompleteMultiCharacterSanitization.ql
 ql/javascript/ql/src/Security/CWE-116/IncompleteSanitization.ql
 ql/javascript/ql/src/Security/CWE-116/UnsafeHtmlExpansion.ql
 ql/javascript/ql/src/Security/CWE-134/TaintedFormatString.ql
+ql/javascript/ql/src/Security/CWE-1427/SystemPromptInjection.ql
 ql/javascript/ql/src/Security/CWE-178/CaseSensitiveMiddlewarePath.ql
 ql/javascript/ql/src/Security/CWE-200/PrivateFileExposure.ql
 ql/javascript/ql/src/Security/CWE-201/PostMessageStar.ql
@@ -83,5 +84,6 @@ ql/javascript/ql/src/Security/CWE-915/PrototypePollutingFunction.ql
 ql/javascript/ql/src/Security/CWE-915/PrototypePollutingMergeCall.ql
 ql/javascript/ql/src/Security/CWE-916/InsufficientPasswordHash.ql
 ql/javascript/ql/src/Security/CWE-918/RequestForgery.ql
+ql/javascript/ql/src/Security/CWE-942/CorsPermissiveConfiguration.ql
 ql/javascript/ql/src/Summary/LinesOfCode.ql
 ql/javascript/ql/src/Summary/LinesOfUserCode.ql

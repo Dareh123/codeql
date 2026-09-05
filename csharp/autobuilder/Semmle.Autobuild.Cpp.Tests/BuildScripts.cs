@@ -146,6 +146,10 @@ namespace Semmle.Autobuild.Cpp.Tests
 
         bool IBuildActions.IsMacOs() => IsMacOs;
 
+        public bool IsLinux { get; set; }
+
+        bool IBuildActions.IsLinux() => IsLinux;
+
         public bool IsRunningOnAppleSilicon { get; set; }
 
         bool IBuildActions.IsRunningOnAppleSilicon() => IsRunningOnAppleSilicon;
@@ -154,7 +158,7 @@ namespace Semmle.Autobuild.Cpp.Tests
 
         bool IBuildActions.IsMonoInstalled() => IsMonoInstalled;
 
-        string IBuildActions.PathCombine(params string[] parts)
+        string IBuildActions.PathJoin(params string[] parts)
         {
             return string.Join(IsWindows ? '\\' : '/', parts.Where(p => !string.IsNullOrWhiteSpace(p)));
         }

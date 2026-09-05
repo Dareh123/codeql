@@ -1154,3 +1154,186 @@ namespace conflation_regression {
     read_deref_deref(p);
   }
 }
+
+int recursion = (sink(recursion), source()); // clean
+
+
+namespace globals_without_explicit_def {
+  int* global_int_ptr;
+
+  void set(int* p) { // $ ast-def=p ir-def=*p
+    *p = source();
+  }
+
+  void test1() {
+    set(global_int_ptr);
+    indirect_sink(global_int_ptr); // $ ir,ast
+  }
+
+  void test2() {
+    set(global_int_ptr);
+    sink(*global_int_ptr); // $ ir MISSING: ast
+  }
+
+  void calls_set() {
+    set(global_int_ptr);
+  }
+
+  void test3() {
+    calls_set();
+    indirect_sink(global_int_ptr); // $ ir MISSING: ast
+  }
+
+  void test4() {
+    calls_set();
+    sink(*global_int_ptr); // $ ir MISSING: ast
+  }
+
+  int** global_int_ptr_ptr;
+
+  void set_indirect(int** p) { // $ ast-def=p ir-def=*p ir-def=**p
+    *p = indirect_source();
+  }
+
+  void test5() {
+    set_indirect(global_int_ptr_ptr);
+    indirect_sink(global_int_ptr_ptr); // $ ir,ast
+    sink(global_int_ptr_ptr); // $ SPURIOUS: ast
+  }
+
+  void test6() {
+    set_indirect(global_int_ptr_ptr);
+    indirect_sink(*global_int_ptr_ptr); // $ ir MISSING: ast
+    sink(*global_int_ptr_ptr);
+    indirect_sink(**global_int_ptr_ptr);
+    sink(**global_int_ptr_ptr); // $ ir
+  }
+
+  void calls_set_indirect() {
+    set_indirect(global_int_ptr_ptr);
+  }
+
+  void test7() {
+    calls_set_indirect();
+    indirect_sink(global_int_ptr_ptr); // $ ir MISSING: ast
+    sink(global_int_ptr_ptr); // $ MISSING: ast
+  }
+
+  void test8() {
+    calls_set_indirect();
+    indirect_sink(*global_int_ptr_ptr); // $ ir MISSING: ast
+    sink(*global_int_ptr_ptr);
+    indirect_sink(**global_int_ptr_ptr);
+    sink(**global_int_ptr_ptr); // $ ir MISSING: ast
+  }
+
+  int global_int_array[10];
+
+  void test9() {
+    set(global_int_array);
+    indirect_sink(global_int_array); // $ ir,ast
+  }
+
+  void test10() {
+    set(global_int_array);
+    sink(*global_int_array); // $ ir,ast
+  }
+
+  void calls_set_array() {
+    set(global_int_array);
+  }
+
+  void test11() {
+    calls_set_array();
+    indirect_sink(global_int_array); // $ ir MISSING: ast
+  }
+
+  void test12() {
+    calls_set_array();
+    sink(*global_int_array); // $ ir MISSING: ast
+  }
+}
+
+void crement_test1() {
+  int x = source();
+  sink(x++); // $ ir ast
+  sink(x);
+
+  x = source();
+  sink(x--); // $ ir ast
+  sink(x);
+
+  x = source();
+  sink(++x); // $ SPURIOUS: ast
+  sink(x); // $ SPURIOUS: ast
+
+  x = source();
+  sink(--x); // $ SPURIOUS: ast
+  sink(x); // $ SPURIOUS: ast
+
+  x = source();
+  sink(x += 10); // $ SPURIOUS: ast
+  sink(x); // $ SPURIOUS: ast
+
+  x = source();
+  sink(x -= 10); // $ SPURIOUS: ast
+  sink(x); // $ SPURIOUS: ast
+}
+
+void crement_test2(bool b, int y) {
+  int x = source();
+  sink(b ? x++ : x--); // $ ir ast
+  sink(x);
+
+  x = source();
+  sink((b ? x : y)++); // $ ast MISSING: ir
+  sink(x); // $ ir ast
+
+  x = source();
+  sink(++(b ? x : y));
+  sink(x); // $ ir ast
+
+  x = source();
+  sink(b ? x++ : y); // $ ir ast
+  sink(x); // $ ir ast
+
+  x = source();
+  sink(b ? x : y++); // $ ir ast
+  sink(x); // $ ir ast
+
+  x = source();
+  sink(b ? ++x : y); // $ SPURIOUS: ast
+  sink(x); // $ ir ast
+
+  x = source();
+  sink((long)x++); // $ ir ast
+  sink(x);
+
+  x = source();
+  sink(b ? (long)x++ : 0); // $ ir ast
+  sink(x); // $ ir ast
+}
+
+struct nsdmi {
+    int i = source();
+
+    nsdmi() {}
+
+    nsdmi(int i) : i(i) {}
+};
+
+void nsdmi_test() {
+  nsdmi x;
+  sink(x.i); // $ ir MISSING: ast
+
+  nsdmi y(source());
+  sink(y.i); // $ ir ast
+}
+
+void certain_def_uninitialized_instruction_test() {
+  for(int i = 0; i < 10; i++) {
+    char buffer[10];
+    sink(buffer[0]); // $ SPURIOUS: ast
+    buffer[0] = source();
+  }
+}

@@ -1,6 +1,10 @@
 package com.github.codeql
 
-import com.github.codeql.utils.versions.copyParameterToFunction
+import com.github.codeql.utils.versions.codeQlAnnotationFromSymbolOwner
+import com.github.codeql.utils.versions.codeQlGetValueArgument
+import com.github.codeql.utils.versions.codeQlPutValueArgument
+import com.github.codeql.utils.versions.codeQlSetAnnotations
+import com.github.codeql.utils.versions.codeQlSetDispatchReceiverParameter
 import com.github.codeql.utils.versions.createImplicitParameterDeclarationWithWrappedDescriptor
 import java.lang.annotation.ElementType
 import java.util.HashSet
@@ -21,7 +25,9 @@ import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
+import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrProperty
+import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.expressions.IrClassReference
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrGetEnumValue
@@ -31,6 +37,7 @@ import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.constructedClass
 import org.jetbrains.kotlin.ir.util.constructors
+import org.jetbrains.kotlin.ir.util.copyTo
 import org.jetbrains.kotlin.ir.util.deepCopyWithSymbols
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
@@ -93,7 +100,7 @@ class MetaAnnotationSupport(
                     JvmAnnotationNames.REPEATABLE_ANNOTATION
             }
         return if (jvmRepeatable != null) {
-            ((jvmRepeatable.getValueArgument(0) as? IrClassReference)?.symbol as? IrClassSymbol)
+            ((jvmRepeatable.codeQlGetValueArgument(0) as? IrClassReference)?.symbol as? IrClassSymbol)
                 ?.owner
         } else {
             getOrCreateSyntheticRepeatableAnnotationContainer(annotationClass)
@@ -115,12 +122,12 @@ class MetaAnnotationSupport(
             )
             return null
         } else {
-            return IrConstructorCallImpl.fromSymbolOwner(
+            return codeQlAnnotationFromSymbolOwner(
                     containerClass.defaultType,
                     containerConstructor.symbol
                 )
                 .apply {
-                    putValueArgument(
+                    codeQlPutValueArgument(
                         0,
                         IrVarargImpl(
                             UNDEFINED_OFFSET,
@@ -142,7 +149,7 @@ class MetaAnnotationSupport(
 
     // Taken from AdditionalClassAnnotationLowering.kt
     private fun loadAnnotationTargets(targetEntry: IrConstructorCall): Set<KotlinTarget>? {
-        val valueArgument = targetEntry.getValueArgument(0) as? IrVararg ?: return null
+        val valueArgument = targetEntry.codeQlGetValueArgument(0) as? IrVararg ?: return null
         return valueArgument.elements
             .filterIsInstance<IrGetEnumValue>()
             .mapNotNull { KotlinTarget.valueOrNull(it.symbol.owner.name.asString()) }
@@ -228,14 +235,14 @@ class MetaAnnotationSupport(
             )
         }
 
-        return IrConstructorCallImpl.fromSymbolOwner(
+        return codeQlAnnotationFromSymbolOwner(
                 UNDEFINED_OFFSET,
                 UNDEFINED_OFFSET,
                 targetConstructor.returnType,
                 targetConstructor.symbol,
                 0
             )
-            .apply { putValueArgument(0, vararg) }
+            .apply { codeQlPutValueArgument(0, vararg) }
     }
 
     private val javaAnnotationRetention by lazy {
@@ -261,7 +268,7 @@ class MetaAnnotationSupport(
     // Taken from AnnotationCodegen.kt (not available in Kotlin < 1.6.20)
     private fun IrClass.getAnnotationRetention(): KotlinRetention? {
         val retentionArgument =
-            getAnnotation(StandardNames.FqNames.retention)?.getValueArgument(0) as? IrGetEnumValue
+            getAnnotation(StandardNames.FqNames.retention)?.codeQlGetValueArgument(0) as? IrGetEnumValue
                 ?: return null
         val retentionArgumentValue = retentionArgument.symbol.owner
         return KotlinRetention.valueOf(retentionArgumentValue.name.asString())
@@ -281,7 +288,7 @@ class MetaAnnotationSupport(
         val targetConstructor =
             retentionType.declarations.firstIsInstanceOrNull<IrConstructor>() ?: return null
 
-        return IrConstructorCallImpl.fromSymbolOwner(
+        return codeQlAnnotationFromSymbolOwner(
                 UNDEFINED_OFFSET,
                 UNDEFINED_OFFSET,
                 targetConstructor.returnType,
@@ -289,7 +296,7 @@ class MetaAnnotationSupport(
                 0
             )
             .apply {
-                putValueArgument(
+                codeQlPutValueArgument(
                     0,
                     IrGetEnumValueImpl(
                         UNDEFINED_OFFSET,
@@ -330,8 +337,8 @@ class MetaAnnotationSupport(
                             )
                             return
                         }
-                val newParam = copyParameterToFunction(thisReceiever, this)
-                dispatchReceiverParameter = newParam
+                val newParam = thisReceiever.copyTo(this)
+                codeQlSetDispatchReceiverParameter(newParam)
                 body =
                     factory
                         .createBlockBody(UNDEFINED_OFFSET, UNDEFINED_OFFSET)
@@ -404,7 +411,7 @@ class MetaAnnotationSupport(
             val repeatableContainerAnnotation =
                 kotlinAnnotationRepeatableContainer?.constructors?.single()
 
-            containerClass.annotations =
+            codeQlSetAnnotations(containerClass,
                 annotationClass.annotations
                     .filter {
                         it.isAnnotationWithEqualFqName(StandardNames.FqNames.retention) ||
@@ -413,7 +420,7 @@ class MetaAnnotationSupport(
                     .map { it.deepCopyWithSymbols(containerClass) } +
                     listOfNotNull(
                         repeatableContainerAnnotation?.let {
-                            IrConstructorCallImpl.fromSymbolOwner(
+                            codeQlAnnotationFromSymbolOwner(
                                 UNDEFINED_OFFSET,
                                 UNDEFINED_OFFSET,
                                 it.returnType,
@@ -422,6 +429,7 @@ class MetaAnnotationSupport(
                             )
                         }
                     )
+            )
 
             containerClass
         }
@@ -460,14 +468,14 @@ class MetaAnnotationSupport(
                 containerClass.symbol,
                 containerClass.defaultType
             )
-        return IrConstructorCallImpl.fromSymbolOwner(
+        return codeQlAnnotationFromSymbolOwner(
                 UNDEFINED_OFFSET,
                 UNDEFINED_OFFSET,
                 repeatableConstructor.returnType,
                 repeatableConstructor.symbol,
                 0
             )
-            .apply { putValueArgument(0, containerReference) }
+            .apply { codeQlPutValueArgument(0, containerReference) }
     }
 
     private val javaAnnotationDocumented by lazy {
@@ -486,7 +494,7 @@ class MetaAnnotationSupport(
             javaAnnotationDocumented?.declarations?.firstIsInstanceOrNull<IrConstructor>()
                 ?: return null
 
-        return IrConstructorCallImpl.fromSymbolOwner(
+        return codeQlAnnotationFromSymbolOwner(
             UNDEFINED_OFFSET,
             UNDEFINED_OFFSET,
             documentedConstructor.returnType,

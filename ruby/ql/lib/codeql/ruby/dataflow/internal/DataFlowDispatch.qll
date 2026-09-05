@@ -183,7 +183,7 @@ class NormalCall extends DataFlowCall, TNormalCall {
 
   override CfgNodes::ExprNodes::CallCfgNode asCall() { result = c }
 
-  override DataFlowCallable getEnclosingCallable() { result = TCfgScope(c.getScope()) }
+  override DataFlowCallable getEnclosingCallable() { result = TCfgScope(c.getEnclosingCallable()) }
 
   override string toString() { result = c.toString() }
 
@@ -240,7 +240,9 @@ class NormalCall extends DataFlowCall, TNormalCall {
 module ViewComponentRenderModeling {
   private import codeql.ruby.frameworks.ViewComponent
 
-  private class RenderMethod extends SummarizedCallable, LibraryCallableToIncludeInTypeTracking {
+  private class RenderMethod extends SummarizedCallable::Range,
+    LibraryCallableToIncludeInTypeTracking
+  {
     RenderMethod() { this = "render view component" }
 
     override MethodCall getACallSimple() { result.getMethodName() = "render" }
@@ -685,24 +687,31 @@ pragma[nomagic]
 private CfgScope getTargetInstance(DataFlowCall call, string method) {
   exists(boolean exact |
     result = lookupInstanceMethodCall(call, method, exact) and
-    (
-      if result.(Method).isPrivate()
-      then
-        call.asCall().getReceiver().getExpr() instanceof SelfVariableAccess and
-        // For now, we restrict the scope of top-level declarations to their file.
-        // This may remove some plausible targets, but also removes a lot of
-        // implausible targets
-        (
-          isToplevelMethodInFile(result, call.asCall().getFile()) or
-          not isToplevelMethodInFile(result, _)
-        )
-      else any()
-    ) and
-    if result.(Method).isProtected()
-    then
-      result = lookupMethod(call.asCall().getExpr().getEnclosingModule().getModule(), method, exact)
-    else any()
+    (if result.(Method).isPrivate() then result = privateFilter(call) else any()) and
+    if result.(Method).isProtected() then result = protectedFilter(call, method, exact) else any()
   )
+}
+
+pragma[nomagic]
+private File callGetFile(DataFlowCall call) { result = call.asCall().getLocation().getFile() }
+
+bindingset[call, result]
+pragma[inline_late]
+private CfgScope privateFilter(DataFlowCall call) {
+  call.asCall().getReceiver().getExpr() instanceof SelfVariableAccess and
+  // For now, we restrict the scope of top-level declarations to their file.
+  // This may remove some plausible targets, but also removes a lot of
+  // implausible targets
+  (
+    isToplevelMethodInFile(result, callGetFile(call)) or
+    not isToplevelMethodInFile(result, _)
+  )
+}
+
+bindingset[call, method, exact, result]
+pragma[inline_late]
+private CfgScope protectedFilter(DataFlowCall call, string method, boolean exact) {
+  result = lookupMethod(call.asCall().getExpr().getEnclosingModule().getModule(), method, exact)
 }
 
 private module TrackBlockInput implements CallGraphConstruction::Simple::InputSig {

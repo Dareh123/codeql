@@ -2,12 +2,10 @@ import cpp
 private import experimental.quantum.Language
 private import KnownAlgorithmConstants
 private import Crypto::KeyOpAlg as KeyOpAlg
-private import OpenSSLAlgorithmInstanceBase
-private import PaddingAlgorithmInstance
-private import experimental.quantum.OpenSSL.AlgorithmValueConsumers.OpenSSLAlgorithmValueConsumerBase
-private import experimental.quantum.OpenSSL.AlgorithmValueConsumers.DirectAlgorithmValueConsumer
+private import experimental.quantum.OpenSSL.Operations.OpenSSLOperationBase
+private import experimental.quantum.OpenSSL.AlgorithmValueConsumers.OpenSSLAlgorithmValueConsumers
+private import OpenSSLAlgorithmInstances
 private import AlgToAVCFlow
-private import BlockAlgorithmInstance
 
 /**
  * Given a `KnownOpenSslCipherAlgorithmExpr`, converts this to a cipher family type.
@@ -33,9 +31,9 @@ predicate knownOpenSslConstantToCipherFamilyType(
       or
       name.matches("CAST5%") and type = KeyOpAlg::TSymmetricCipher(KeyOpAlg::CAST5())
       or
-      name.matches("2DES%") and type = KeyOpAlg::TSymmetricCipher(KeyOpAlg::DoubleDES())
+      name.matches("2DES%") and type = KeyOpAlg::TSymmetricCipher(KeyOpAlg::DOUBLE_DES())
       or
-      name.matches("3DES%") and type = KeyOpAlg::TSymmetricCipher(KeyOpAlg::TripleDES())
+      name.matches("3DES%") and type = KeyOpAlg::TSymmetricCipher(KeyOpAlg::TRIPLE_DES())
       or
       name.matches("DES%") and type = KeyOpAlg::TSymmetricCipher(KeyOpAlg::DES())
       or
@@ -79,7 +77,8 @@ class KnownOpenSslCipherConstantAlgorithmInstance extends OpenSslAlgorithmInstan
       // Sink is an argument to a CipherGetterCall
       sink = getterCall.getInputNode() and
       // Source is `this`
-      src.asExpr() = this and
+      // NOTE: src literals can be ints or strings, so need to consider asExpr and asIndirectExpr
+      this = [src.asExpr(), src.asIndirectExpr()] and
       // This traces to a getter
       KnownOpenSslAlgorithmToAlgorithmValueConsumerFlow::flow(src, sink)
     )
@@ -97,10 +96,13 @@ class KnownOpenSslCipherConstantAlgorithmInstance extends OpenSslAlgorithmInstan
   }
 
   override Crypto::PaddingAlgorithmInstance getPaddingAlgorithm() {
-    //TODO: the padding is either self, or it flows through getter ctx to a set padding call
-    // like EVP_PKEY_CTX_set_rsa_padding
     result = this
-    // TODO or trace through getter ctx to set padding
+    or
+    exists(OperationStep s |
+      this.getAvc().(AvcContextCreationStep).flowsToOperationStep(s) and
+      s.getAlgorithmValueConsumerForInput(PaddingAlgorithmIO()) =
+        result.(OpenSslAlgorithmInstance).getAvc()
+    )
   }
 
   override string getRawAlgorithmName() {
@@ -113,11 +115,11 @@ class KnownOpenSslCipherConstantAlgorithmInstance extends OpenSslAlgorithmInstan
     this.(KnownOpenSslCipherAlgorithmExpr).getExplicitKeySize() = result
   }
 
-  override Crypto::KeyOpAlg::Algorithm getAlgorithmType() {
+  override KeyOpAlg::AlgorithmType getAlgorithmType() {
     knownOpenSslConstantToCipherFamilyType(this, result)
     or
     not knownOpenSslConstantToCipherFamilyType(this, _) and
-    result = Crypto::KeyOpAlg::TUnknownKeyOperationAlgorithmType()
+    result = Crypto::KeyOpAlg::TOtherKeyOperationAlgorithmType()
   }
 
   override OpenSslAlgorithmValueConsumer getAvc() { result = getterCall }

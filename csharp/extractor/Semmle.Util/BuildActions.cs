@@ -120,6 +120,12 @@ namespace Semmle.Util
         bool IsMacOs();
 
         /// <summary>
+        /// Gets a value indicating whether we are running on Linux.
+        /// </summary>
+        /// <returns>True if we are running on Linux.</returns>
+        bool IsLinux();
+
+        /// <summary>
         /// Gets a value indicating whether we are running on Apple Silicon.
         /// </summary>
         /// <returns>True if we are running on Apple Silicon.</returns>
@@ -131,11 +137,11 @@ namespace Semmle.Util
         bool IsMonoInstalled();
 
         /// <summary>
-        /// Combine path segments, Path.Combine().
+        /// Joins path segments, Path.Join().
         /// </summary>
         /// <param name="parts">The parts of the path.</param>
         /// <returns>The combined path.</returns>
-        string PathCombine(params string[] parts);
+        string PathJoin(params string[] parts);
 
         /// <summary>
         /// Gets the full path for <paramref name="path"/>, Path.GetFullPath().
@@ -246,6 +252,8 @@ namespace Semmle.Util
 
         bool IBuildActions.IsMacOs() => RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
 
+        bool IBuildActions.IsLinux() => RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
+
         bool IBuildActions.IsRunningOnAppleSilicon()
         {
             var thisBuildActions = (IBuildActions)this;
@@ -285,7 +293,7 @@ namespace Semmle.Util
             }
         }
 
-        string IBuildActions.PathCombine(params string[] parts) => Path.Combine(parts);
+        string IBuildActions.PathJoin(params string[] parts) => Path.Join(parts);
 
         void IBuildActions.WriteAllText(string filename, string contents) => File.WriteAllText(filename, contents);
 

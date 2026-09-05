@@ -5,7 +5,6 @@
 
 import csharp
 private import semmle.code.csharp.controlflow.Guards
-private import semmle.code.csharp.controlflow.BasicBlocks
 private import semmle.code.csharp.security.dataflow.flowsinks.FlowSinks
 private import semmle.code.csharp.security.dataflow.flowsources.FlowSources
 private import semmle.code.csharp.frameworks.System
@@ -39,6 +38,15 @@ private module ConditionalBypassConfig implements DataFlow::ConfigSig {
   predicate isSink(DataFlow::Node sink) { sink instanceof Sink }
 
   predicate isBarrier(DataFlow::Node node) { node instanceof Sanitizer }
+
+  predicate observeDiffInformedIncrementalMode() { any() }
+
+  Location getASelectedSinkLocation(DataFlow::Node sink) {
+    result = sink.getLocation()
+    or
+    // from ConditionalBypass.ql
+    result = sink.(Sink).getSensitiveMethodCall().getLocation()
+  }
 }
 
 /**
@@ -63,19 +71,10 @@ class ReverseDnsSource extends Source {
   }
 }
 
-pragma[noinline]
-private predicate conditionControlsCall0(
-  SensitiveExecutionMethodCall call, Expr e, ControlFlow::SuccessorTypes::BooleanSuccessor s
-) {
-  forex(BasicBlock bb | bb = call.getAControlFlowNode().getBasicBlock() | e.controlsBlock(bb, s, _))
-}
-
 private predicate conditionControlsCall(
   SensitiveExecutionMethodCall call, SensitiveExecutionMethod def, Expr e, boolean cond
 ) {
-  exists(ControlFlow::SuccessorTypes::BooleanSuccessor s | cond = s.getValue() |
-    conditionControlsCall0(call, e, s)
-  ) and
+  e.(Guard).directlyControls(call.getBasicBlock(), cond) and
   def = call.getTarget().getUnboundDeclaration()
 }
 

@@ -1,52 +1,19 @@
 /** Provides classes and predicates to reason about sanitization of path injection vulnerabilities. */
+overlay[local?]
+module;
 
 import java
 private import semmle.code.java.controlflow.Guards
+private import semmle.code.java.dataflow.ExternalFlow
 private import semmle.code.java.dataflow.FlowSources
 private import semmle.code.java.dataflow.SSA
 private import semmle.code.java.frameworks.kotlin.IO
 private import semmle.code.java.frameworks.kotlin.Text
 private import semmle.code.java.dataflow.Nullness
+private import semmle.code.java.security.Sanitizers
 
 /** A sanitizer that protects against path injection vulnerabilities. */
 abstract class PathInjectionSanitizer extends DataFlow::Node { }
-
-/**
- * Provides a set of nodes validated by a method that uses a validation guard.
- */
-private module ValidationMethod<DataFlow::guardChecksSig/3 validationGuard> {
-  /** Gets a node that is safely guarded by a method that uses the given guard check. */
-  DataFlow::Node getAValidatedNode() {
-    exists(MethodCall ma, int pos, VarRead rv |
-      validationMethod(ma.getMethod(), pos) and
-      ma.getArgument(pos) = rv and
-      adjacentUseUseSameVar(rv, result.asExpr()) and
-      ma.getBasicBlock().dominates(result.asExpr().getBasicBlock())
-    )
-  }
-
-  /**
-   * Holds if `m` validates its `arg`th parameter by using `validationGuard`.
-   */
-  private predicate validationMethod(Method m, int arg) {
-    exists(
-      Guard g, SsaImplicitInit var, ControlFlow::ExitNode exit, ControlFlowNode normexit,
-      boolean branch
-    |
-      validationGuard(g, var.getAUse(), branch) and
-      var.isParameterDefinition(m.getParameter(arg)) and
-      exit.getEnclosingCallable() = m and
-      normexit.getANormalSuccessor() = exit and
-      1 = strictcount(ControlFlowNode n | n.getANormalSuccessor() = exit)
-    |
-      exists(ConditionNode conditionNode |
-        g = conditionNode.getCondition() and conditionNode.getABranchSuccessor(branch) = exit
-      )
-      or
-      g.controls(normexit.getBasicBlock(), branch)
-    )
-  }
-}
 
 /**
  * Holds if `g` is guard that compares a path to a trusted value.
@@ -76,8 +43,6 @@ private predicate exactPathMatchGuard(Guard g, Expr e, boolean branch) {
 class ExactPathMatchSanitizer extends PathInjectionSanitizer {
   ExactPathMatchSanitizer() {
     this = DataFlow::BarrierGuard<exactPathMatchGuard/3>::getABarrierNode()
-    or
-    this = ValidationMethod<exactPathMatchGuard/3>::getAValidatedNode()
   }
 }
 
@@ -128,14 +93,18 @@ private predicate allowedPrefixGuard(Guard g, Expr e, boolean branch) {
 
 private class AllowedPrefixSanitizer extends PathInjectionSanitizer {
   AllowedPrefixSanitizer() {
-    this = DataFlow::BarrierGuard<allowedPrefixGuard/3>::getABarrierNode() or
-    this = ValidationMethod<allowedPrefixGuard/3>::getAValidatedNode()
+    this = DataFlow::BarrierGuard<allowedPrefixGuard/3>::getABarrierNode()
   }
+}
+
+/** A call to `java.io.File.getName`, which returns the final component of a path. */
+private class FileGetNameCall extends MethodCall {
+  FileGetNameCall() { this.getMethod().hasQualifiedName("java.io", "File", "getName") }
 }
 
 /**
  * Holds if `g` is a guard that considers a path safe because it is checked for `..` components, having previously
- * been checked for a trusted prefix.
+ * been checked for a trusted prefix or been reduced to its final path component by `File.getName`.
  */
 private predicate dotDotCheckGuard(Guard g, Expr e, boolean branch) {
   pathTraversalGuard(g, e, branch) and
@@ -144,13 +113,19 @@ private predicate dotDotCheckGuard(Guard g, Expr e, boolean branch) {
     or
     previousGuard.(BlockListGuard).controls(g.getBasicBlock(), false)
   )
+  or
+  // `File.getName` strips any directory prefix, returning only the final path
+  // component. The only remaining path traversal risk is when that component is
+  // itself `..`, so a check for `..` components on the result of `getName`
+  // completes the sanitization.
+  exists(FileGetNameCall getName |
+    pathTraversalGuard(g, getName, branch) and
+    TaintTracking::localExprTaint(getName, e)
+  )
 }
 
 private class DotDotCheckSanitizer extends PathInjectionSanitizer {
-  DotDotCheckSanitizer() {
-    this = DataFlow::BarrierGuard<dotDotCheckGuard/3>::getABarrierNode() or
-    this = ValidationMethod<dotDotCheckGuard/3>::getAValidatedNode()
-  }
+  DotDotCheckSanitizer() { this = DataFlow::BarrierGuard<dotDotCheckGuard/3>::getABarrierNode() }
 }
 
 private class BlockListGuard extends PathGuard instanceof MethodCall {
@@ -187,10 +162,7 @@ private predicate blockListGuard(Guard g, Expr e, boolean branch) {
 }
 
 private class BlockListSanitizer extends PathInjectionSanitizer {
-  BlockListSanitizer() {
-    this = DataFlow::BarrierGuard<blockListGuard/3>::getABarrierNode() or
-    this = ValidationMethod<blockListGuard/3>::getAValidatedNode()
-  }
+  BlockListSanitizer() { this = DataFlow::BarrierGuard<blockListGuard/3>::getABarrierNode() }
 }
 
 private class ConstantOrRegex extends Expr {
@@ -286,7 +258,7 @@ private class PathNormalizeSanitizer extends MethodCall {
   PathNormalizeSanitizer() {
     exists(RefType t | this.getMethod().getDeclaringType() = t |
       (t instanceof TypePath or t instanceof FilesKt) and
-      this.getMethod().hasName("normalize")
+      this.getMethod().hasName(["normalize", "toRealPath"])
       or
       t instanceof TypeFile and
       this.getMethod().hasName(["getCanonicalPath", "getCanonicalFile"])
@@ -332,19 +304,8 @@ private Method getSourceMethod(Method m) {
   result = m
 }
 
-/**
- * A sanitizer that protects against path injection vulnerabilities
- * by extracting the final component of the user provided path.
- *
- * TODO: convert this class to models-as-data if sanitizer support is added
- */
-private class FileGetNameSanitizer extends PathInjectionSanitizer {
-  FileGetNameSanitizer() {
-    exists(MethodCall mc |
-      mc.getMethod().hasQualifiedName("java.io", "File", "getName") and
-      this.asExpr() = mc
-    )
-  }
+private class ExternalPathInjectionSanitizer extends PathInjectionSanitizer {
+  ExternalPathInjectionSanitizer() { barrierNode(this, ["path-injection", "path-injection[read]"]) }
 }
 
 /** Holds if `g` is a guard that checks for `..` components. */
@@ -376,7 +337,6 @@ private class FileConstructorChildArgumentStep extends AdditionalTaintStep {
       n2.asExpr() = constrCall
     |
       not n1 = DataFlow::BarrierGuard<pathTraversalGuard/3>::getABarrierNode() and
-      not n1 = ValidationMethod<pathTraversalGuard/3>::getAValidatedNode() and
       not TaintTracking::localExprTaint(any(PathNormalizeSanitizer p), n1.asExpr())
       or
       DataFlow::localExprFlow(nullExpr(), constrCall.getArgument(0))
@@ -482,20 +442,15 @@ private class ReplaceDirectoryCharactersSanitizer extends StringReplaceOrReplace
   }
 }
 
-/** Holds if `target` is the first argument of `matchesCall`. */
-private predicate isMatchesTarget(StringMatchesCall matchesCall, CompileTimeConstantExpr target) {
-  target = matchesCall.getArgument(0)
-}
-
 /**
  * Holds if `matchesCall` confirms that `checkedExpr` does not contain any directory characters
  * on the given `branch`.
  */
-private predicate isMatchesCall(StringMatchesCall matchesCall, Expr checkedExpr, boolean branch) {
+private predicate isMatchesCall(RegexMatch regexMatch, Expr checkedExpr, boolean branch) {
   exists(CompileTimeConstantExpr target, string targetValue |
-    isMatchesTarget(matchesCall, target) and
+    target = regexMatch.getRegex() and
     target.getStringValue() = targetValue and
-    checkedExpr = matchesCall.getQualifier()
+    checkedExpr = regexMatch.getString()
   |
     (
       // Allow anything except `.`, '/', '\'
@@ -553,8 +508,8 @@ private predicate directoryCharactersGuard(Guard g, Expr e, boolean branch) {
  */
 private class DirectoryCharactersSanitizer extends PathInjectionSanitizer {
   DirectoryCharactersSanitizer() {
-    this.asExpr() instanceof ReplaceDirectoryCharactersSanitizer or
-    this = DataFlow::BarrierGuard<directoryCharactersGuard/3>::getABarrierNode() or
-    this = ValidationMethod<directoryCharactersGuard/3>::getAValidatedNode()
+    this.asExpr() instanceof ReplaceDirectoryCharactersSanitizer
+    or
+    this = DataFlow::BarrierGuard<directoryCharactersGuard/3>::getABarrierNode()
   }
 }

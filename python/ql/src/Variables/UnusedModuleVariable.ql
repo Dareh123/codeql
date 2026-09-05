@@ -13,6 +13,7 @@
  */
 
 import python
+private import LegacyPointsTo
 import Definition
 
 /**
@@ -53,12 +54,12 @@ predicate unused_global(Name unused, GlobalVariable v) {
       u.uses(v)
     |
       // That is reachable from this definition, directly
-      defn.strictlyReaches(u.getAFlowNode())
+      exists(ControlFlowNode uCfg | uCfg.getNode() = u | defn.strictlyReaches(uCfg))
       or
       // indirectly
       defn.getBasicBlock().reachesExit() and u.getScope() != unused.getScope()
     ) and
-    not unused.getEnclosingModule().getAnExport() = v.getId() and
+    not unused.getEnclosingModule().(ModuleWithPointsTo).getAnExport() = v.getId() and
     not exists(unused.getParentNode().(ClassDef).getDefinedClass().getADecorator()) and
     not exists(unused.getParentNode().(FunctionDef).getDefinedFunction().getADecorator()) and
     unused.defines(v) and

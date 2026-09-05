@@ -1,3 +1,6 @@
+overlay[local?]
+module;
+
 import java
 import semmle.code.java.Maps
 import SpringWeb
@@ -153,9 +156,6 @@ class SpringRequestMappingMethod extends SpringControllerMethod {
     result = this.getProducesExpr().(CompileTimeConstantExpr).getStringValue()
   }
 
-  /** DEPRECATED: Use `getAValue()` instead. */
-  deprecated string getValue() { result = requestMappingAnnotation.getStringValue("value") }
-
   /**
    * Gets a "value" @RequestMapping annotation string value, if present.
    *
@@ -184,13 +184,10 @@ class SpringServletInputAnnotation extends Annotation {
       a = this.getType() and
       a.getPackage().getName() = "org.springframework.web.bind.annotation"
     |
-      a.hasName("MatrixVariable") or
-      a.hasName("RequestParam") or
-      a.hasName("RequestHeader") or
-      a.hasName("CookieValue") or
-      a.hasName("RequestPart") or
-      a.hasName("PathVariable") or
-      a.hasName("RequestBody")
+      a.hasName([
+          "MatrixVariable", "RequestParam", "RequestHeader", "CookieValue", "RequestPart",
+          "PathVariable", "RequestBody"
+        ])
     )
   }
 }
@@ -210,10 +207,22 @@ class SpringRequestMappingParameter extends Parameter {
   predicate isNotDirectlyTaintedInput() {
     this.getType().(RefType).getAnAncestor() instanceof SpringWebRequest or
     this.getType().(RefType).getAnAncestor() instanceof SpringNativeWebRequest or
-    this.getType().(RefType).getAnAncestor().hasQualifiedName("javax.servlet", "ServletRequest") or
-    this.getType().(RefType).getAnAncestor().hasQualifiedName("javax.servlet", "ServletResponse") or
-    this.getType().(RefType).getAnAncestor().hasQualifiedName("javax.servlet.http", "HttpSession") or
-    this.getType().(RefType).getAnAncestor().hasQualifiedName("javax.servlet.http", "PushBuilder") or
+    this.getType()
+        .(RefType)
+        .getAnAncestor()
+        .hasQualifiedName(javaxOrJakarta() + ".servlet", "ServletRequest") or
+    this.getType()
+        .(RefType)
+        .getAnAncestor()
+        .hasQualifiedName(javaxOrJakarta() + ".servlet", "ServletResponse") or
+    this.getType()
+        .(RefType)
+        .getAnAncestor()
+        .hasQualifiedName(javaxOrJakarta() + ".servlet.http", "HttpSession") or
+    this.getType()
+        .(RefType)
+        .getAnAncestor()
+        .hasQualifiedName(javaxOrJakarta() + ".servlet.http", "PushBuilder") or
     this.getType().(RefType).getAnAncestor().hasQualifiedName("java.security", "Principal") or
     this.getType()
         .(RefType)

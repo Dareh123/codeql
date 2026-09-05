@@ -1,3 +1,270 @@
+## 9.3.0
+
+### New Features
+
+* Factories returned by the Apache Commons Secure XML (`org.apache.commons.xml.secure`) hardening library's `SecureDocumentBuilderFactory`, `SecureSAXParserFactory`, `SecureXMLInputFactory`, `SecureTransformerFactory` and `SecureSchemaFactory` classes are now recognized as safely configured by the XXE query.
+* A new extensible class `SafeXmlFactorySource` was added to `semmle.code.java.security.XmlParsers` for modeling sources of pre-hardened JAXP factories.
+
+### Minor Analysis Improvements
+
+* Added modeling for the Micronaut framework, including HTTP controllers, WebSocket endpoints, configuration injection, data access, security annotations, and HTTP client sinks.
+
+## 9.2.4
+
+### Minor Analysis Improvements
+
+* Removed the summary model for `String.valueOf(CharSequence)`, which does not exist. Instead, taint is now propagated through calls to `String.valueOf(Object)` when the argument is a `CharSequence`, for example a `String` or a `StringBuilder`.
+* Added SQL injection sink models for Spring R2DBC `DatabaseClient` and the R2DBC SPI.
+
+## 9.2.3
+
+No user-facing changes.
+
+## 9.2.2
+
+### Minor Analysis Improvements
+
+* Kotlin versions up to 2.4.10 are now supported.
+* `java.io.File.getName()` is no longer treated as a complete sanitizer for `java/path-injection`, since it does not remove a `..` path component (for example `new File("..").getName()` returns `".."`). It is now only recognized as a sanitizer when combined with a subsequent check for `..` components, which may result in new alerts.
+
+## 9.2.1
+
+### Minor Analysis Improvements
+
+* Regular expression checks via annotation with `@javax.validation.constraints.Pattern` are now recognized as sanitizers for `java/path-injection`.
+* Added summary and LLM-generated source and sink models for `org.apache.poi`.
+* The first argument of the `uri` method of `WebClient$UriSpec` in `org.springframework.web.reactive.function.client` is now considered a request forgery sink. Previously only the first arguments of the `WebClient.create` and `WebClient$Builder.baseUrl` methods were considered. This may lead to more alerts for the query `java/ssrf` (Server-side request forgery).
+
+## 9.2.0
+
+### New Features
+
+* Kotlin 2.4.0 can now be analysed.
+
+### Minor Analysis Improvements
+
+* Improved modeling of Apache HttpClient `execute` method sinks for `java/ssrf` and `java/non-https-url`.
+
+## 9.1.2
+
+### Minor Analysis Improvements
+
+* Added LLM-generated source and sink models for `org.apache.avro`.
+
+## 9.1.1
+
+### Minor Analysis Improvements
+
+* Introduced a new sink kind `path-injection[read]` for Models-as-Data rows that only read from a path (such as `ClassLoader.getResource`, `FileInputStream`, `FileReader`, `Files.readAllBytes`, and related APIs). The general `java/path-injection` query continues to consider both `path-injection` and `path-injection[read]` sinks.
+
+## 9.1.0
+
+### New Features
+
+* Data flow barriers and barrier guards can now be added using data extensions. For more information see [Customizing library models for Java and Kotlin](https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-java-and-kotlin/).
+
+### Minor Analysis Improvements
+
+* Added `sql-injection` sink models for the Hibernate `org.hibernate.query.QueryProducer` methods `createNativeMutationQuery`, `createMutationQuery`, and `createSelectionQuery`.
+* The `java/partial-path-traversal` and `java/partial-path-traversal-from-remote` queries now correctly recognize file separator appends using `+=`.
+* The `java/path-injection` and `java/zipslip` queries now recognize `Path.toRealPath()` as a path normalization sanitizer, consistent with the existing treatment of `Path.normalize()` and `File.getCanonicalPath()`. This reduces false positives for code that uses the NIO.2 API for path canonicalization.
+* The `java/sensitive-log` query now excludes additional common variable naming patterns that do not hold sensitive data, reducing false positives. This includes pagination/iteration tokens (`nextToken`, `pageToken`, `continuationToken`), token metadata (`tokenType`, `tokenEndpoint`, `tokenCount`), and secret metadata (`secretName`, `secretId`, `secretVersion`).
+* The `java/sensitive-log` query now treats method calls whose names contain "encrypt", "hash", or "digest" as sanitizers, consistent with the existing treatment in `java/cleartext-storage-in-log`. This reduces false positives when sensitive data is hashed or encrypted before logging.
+* The `java/trust-boundary-violation` query now recognizes regular expression checks (including `String.matches()` guards and `@javax.validation.constraints.Pattern` annotations) as sanitizers, consistent with the existing treatment of ESAPI validators. This reduces false positives when input is validated against a pattern before being stored in a session.
+
+## 9.0.4
+
+### Minor Analysis Improvements
+
+* The queries "Resolving XML external entity in user-controlled data" (`java/xxe`) and "Resolving XML external entity in user-controlled data from local source" (`java/xxe-local`) now recognize sinks in the Woodstox StAX library when `com.ctc.wstx.stax.WstxInputFactory` or `org.codehaus.stax2.XMLInputFactory2` are used directly.
+
+## 9.0.3
+
+### Minor Analysis Improvements
+
+* The `java/tainted-arithmetic` query no longer flags arithmetic expressions that are used directly as an operand of a comparison in `if`-condition bounds-checking patterns. For example, `if (off + len > array.length)` is now recognized as a bounds check rather than a potentially vulnerable computation, reducing false positives.
+* The `java/potentially-weak-cryptographic-algorithm` query no longer flags Elliptic Curve algorithms (`EC`, `ECDSA`, `ECDH`, `EdDSA`, `Ed25519`, `Ed448`, `XDH`, `X25519`, `X448`), HMAC-based algorithms (`HMACSHA1`, `HMACSHA256`, `HMACSHA384`, `HMACSHA512`), or PBKDF2 key derivation as potentially insecure. These are modern, secure algorithms recommended by NIST and other standards bodies. This will reduce the number of false positives for this query.
+* The first argument of the method `getInstance` of `java.security.Signature` is now modeled as a sink for `java/potentially-weak-cryptographic-algorithm`, `java/weak-cryptographic-algorithm` and `java/rsa-without-oaep`. This will increase the number of alerts for these queries.
+* Kotlin versions up to 2.3.20 are now supported.
+
+## 9.0.2
+
+No user-facing changes.
+
+## 9.0.1
+
+No user-facing changes.
+
+## 9.0.0
+
+### Breaking Changes
+
+* The Java control flow graph (CFG) implementation has been completely
+  rewritten. The CFG now includes additional nodes to more accurately represent
+  certain constructs. This also means that any existing code that implicitly
+  relies on very specific details about the CFG may need to be updated.
+  The CFG now only includes the nodes that are reachable from the entry point.
+  Additionally, the following breaking changes have been made:
+  - `ControlFlowNode.asCall` has been removed - use `Call.getControlFlowNode` instead.
+  - `ControlFlowNode.getEnclosingStmt` has been removed.
+  - `ControlFlow::ExprNode` has been removed.
+  - `ControlFlow::StmtNode` has been removed.
+  - `ControlFlow::Node` has been removed - this was merely an alias of
+    `ControlFlowNode`, which is still available.
+  - Previously deprecated predicates on `BasicBlock` have been removed.
+
+### Minor Analysis Improvements
+
+* Inline expectations test comments, which are of the form `// $ tag` or `// $ tag=value`, are now parsed more strictly and will not be recognized if there isn't a space after the `$` symbol.
+* The class `Assignment` now extends `BinaryExpr`. Uses of `BinaryExpr` may in some cases need slight adjustment.
+
+## 8.1.1
+
+### Minor Analysis Improvements
+
+* Some modelling which previously only worked for Java EE packages beginning with "javax" will now also work for Java EE packages beginning with "jakarta" as well. This may lead to some alert changes.
+
+## 8.1.0
+
+### Deprecated APIs
+
+* The `UnreachableBlocks.qll` library has been deprecated.
+* Renamed the following predicates to increase uniformity across languages. The `getBody` predicate already existed on `LoopStmt`, but is now properly inherited.
+  - `UnaryExpr.getExpr` to `getOperand`.
+  - `ConditionalExpr.getTrueExpr` to `getThen`.
+  - `ConditionalExpr.getFalseExpr` to `getElse`.
+  - `ReturnStmt.getResult` to `getExpr`.
+  - `WhileStmt.getStmt` to `getBody`.
+  - `DoStmt.getStmt` to `getBody`.
+  - `ForStmt.getStmt` to `getBody`.
+  - `EnhancedForStmt.getStmt` to `getBody`.
+
+### Minor Analysis Improvements
+
+* Using a regular expression to check that a string doesn't contain any line breaks is already a sanitizer for `java/log-injection`. Additional ways of doing the regular expression check are now recognised, including annotation with `@javax.validation.constraints.Pattern`.
+* More ways of checking that a string matches a regular expression are now considered as sanitizers for various queries, including `java/ssrf` and `java/path-injection`. In particular, being annotated with `@javax.validation.constraints.Pattern` is now recognised as a sanitizer for those queries.
+* Kotlin versions up to 2.3.10 are now supported.
+
+## 8.0.0
+
+### Breaking Changes
+
+* Support for Kotlin 1.6.x and 1.7.x series has been dropped
+
+### New Features
+
+* Kotlin versions up to 2.3.0 are now supported.
+
+### Minor Analysis Improvements
+
+* Added support for Struts 7.x package names in the Struts framework library. The library now recognizes both the legacy `com.opensymphony.xwork2` package names (Struts 2.x-6.x) and the new `org.apache.struts2` package names (Struts 7.x+), maintaining backward compatibility while enabling analysis of code using the latest Struts versions.
+* The query `java/unreleased-lock` no longer applies to lock types with names ending in "Pool", as these typically manage a collection of resources and the `lock` and `unlock` methods typically only lock one resource at a time. This may lead to a reduction in false positives.
+* The predicate `SummarizedCallable.propagatesFlow` has been extended with the columns `Provenance p` and `boolean isExact`, and as a consequence the predicates `SummarizedCallable.hasProvenance` and `SummarizedCallable.hasExactModel` have been removed.
+* When Maven-compatible private package registries are configured for an organisation for Default Setup, CodeQL will now configure Maven to also use these as plugin repositories. CodeQL previously already configured Maven to use them as regular package repositories. This should now allow Maven plugins to be obtained from private registries.
+
+### Bug Fixes
+
+* Kotlin: The Kotlin extractor now registers as the last IR generation extension, ensuring that code generated by other compiler plugins (such as kotlinx.serialization) is correctly captured.
+
+## 7.8.4
+
+### Minor Analysis Improvements
+
+* When a code-scanning configuration specifies the `paths:` and/or `paths-ignore:` settings, these are now taken into account by the Java extractor's search for XML and properties files.
+* Additional remote flow sources from the `org.springframework.web.socket` package have been modeled. 
+* A sanitizer has been added to `java/ssrf` to remove alerts when a regular expression check is used to verify that the value is safe.
+* URI template variables of all Spring `RestTemplate` methods are now considered as request forgery sinks. Previously only the `getForObject` method was considered. This may lead to more alerts for the query `java/ssrf`.
+* Added more dataflow models of `org.apache.commons.fileupload.FileItem`, `javax/jakarta.servlet.http.Part` and  `org.apache.commons.fileupload.util.Streams`.
+
+## 7.8.3
+
+No user-facing changes.
+
+## 7.8.2
+
+No user-facing changes.
+
+## 7.8.1
+
+No user-facing changes.
+
+## 7.8.0
+
+### Deprecated APIs
+
+* The SSA interface has been updated and all classes and several predicates have been renamed. See the qldoc for more specific migration information.
+
+## 7.7.4
+
+No user-facing changes.
+
+## 7.7.3
+
+No user-facing changes.
+
+## 7.7.2
+
+### Minor Analysis Improvements
+
+* Fields of certain objects are considered tainted if the object is tainted. This holds, for example, for objects that occur directly as sources in the active threat model (for instance, a remote flow source). This has now been amended to also include array types, such that if an array like `MyPojo[]` is a source, then fields of a tainted `MyPojo` are now also considered tainted.
+
+## 7.7.1
+
+No user-facing changes.
+
+## 7.7.0
+
+### New Features
+
+* The Java extractor and QL libraries now support Java 25.
+* Added support for Java 25 compact source files (JEP 512). The new predicate `Class.isImplicit()` identifies classes that are implicitly declared when using compact source files, and the new predicate `CompilationUnit.isCompactSourceFile()` identifies compilation units that contain compact source files.
+* Added support for Java 25 module import declarations.
+* Add `ModuleImportDeclaration` class.
+
+### Minor Analysis Improvements
+
+* Improved support for various assertion libraries, in particular JUnit. This affects the control-flow graph slightly, and in turn affects several queries (mainly quality queries). Most queries should see improved precision (new true positives and fewer false positives), in particular `java/constant-comparison`, `java/index-out-of-bounds`, `java/dereferenced-value-may-be-null`, and `java/useless-null-check`. Some medium precision queries like `java/toctou-race-condition` and `java/unreleased-lock` may see mixed result changes (both slight improvements and slight regressions).
+* Added taint flow model for `java.crypto.KDF`.
+* Added taint flow model for `java.lang.ScopedValue`.
+
+## 7.6.1
+
+No user-facing changes.
+
+## 7.6.0
+
+### Major Analysis Improvements
+
+* Added library models for the relevant method calls under `jakarta.servlet.ServletRequest` and `jakarta.servlet.http.HttpServletRequest` as remote flow sources.
+
+### Minor Analysis Improvements
+
+* Guard implication logic involving wrapper methods has been improved. In particular, this means fewer false positives for `java/dereferenced-value-may-be-null`.
+
+## 7.5.0
+
+### New Features
+
+* Kotlin versions up to 2.2.2*x* are now supported.
+
+## 7.4.0
+
+### Deprecated APIs
+
+* The module `semmle.code.java.frameworks.Castor` has been deprecated and will be removed in a future release.
+* The module `semmle.code.java.frameworks.JYaml` has been deprecated and will be removed in a future release.
+* The classes `UnsafeHessianInputReadObjectMethod` and `BurlapInputReadObjectMethod` in the module `semmle.code.java.frameworks.HessianBurlap` have been deprecated and will be removed in a future release.
+* The class `YamlBeansReaderReadMethod` in the module `semmle.code.java.frameworks.YamlBeans` has been deprecated and will be removed in a future release.
+* The class `MethodApacheSerializationUtilsDeserialize` in the module `semmle.code.java.frameworks.apache.Lang` has been deprecated and will be removed in a future release.
+
+### New Features
+
+* You can now add sinks for the query "Deserialization of user-controlled data" (`java/unsafe-deserialization`) using [data extensions](https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-java-and-kotlin/#extensible-predicates-used-to-create-custom-models-in-java-and-kotlin) by extending `sinkModel` and using the kind "unsafe-deserialization". The existing sinks that do not require extra logic to determine if they are unsafe are now defined in this way.
+
+### Minor Analysis Improvements
+
+* The qualifiers of a calls to `readObject` on any classes that implement `java.io.ObjectInput` are now recognised as sinks for `java/unsafe-deserialization`. Previously this was only the case for classes which extend `java.io.ObjectInputStream`.
+
 ## 7.3.2
 
 ### Minor Analysis Improvements
@@ -19,7 +286,7 @@ No user-facing changes.
 
 ### New Features
 
-* Kotlin versions up to 2.2.0\ *x* are now supported. Support for the Kotlin 1.5.x series is dropped (so the minimum Kotlin version is now 1.6.0).
+* Kotlin versions up to 2.2.0*x* are now supported. Support for the Kotlin 1.5.x series is dropped (so the minimum Kotlin version is now 1.6.0).
 
 ## 7.1.4
 
@@ -156,7 +423,7 @@ No user-facing changes.
 ### New Features
 
 * The Java extractor and QL libraries now support Java 23.
-* Kotlin versions up to 2.1.0\ *x* are now supported.
+* Kotlin versions up to 2.1.0*x* are now supported.
 
 ## 4.0.0
 

@@ -1,5 +1,9 @@
+overlay[local?]
+module;
+
 private import codeql.dataflow.DataFlow
 private import codeql.typetracking.TypeTracking as Tt
+private import codeql.util.Boolean
 private import codeql.util.Location
 private import codeql.util.Option
 private import codeql.util.Unit
@@ -23,30 +27,12 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
   private import Aliases
 
   module DataFlowImplCommonPublic {
-    /**
-     * DEPRECATED: Generally, a custom `FlowState` type should be used instead,
-     * but `string` can of course still be used without referring to this
-     * module.
-     *
-     * Provides `FlowState = string`.
-     */
-    deprecated module FlowStateString {
-      /** A state value to track during data flow. */
-      deprecated class FlowState = string;
-
-      /**
-       * The default state, which is used when the state is unspecified for a source
-       * or a sink.
-       */
-      deprecated class FlowStateEmpty extends FlowState {
-        FlowStateEmpty() { this = "" }
-      }
-    }
-
     private newtype TFlowFeature =
       TFeatureHasSourceCallContext() or
       TFeatureHasSinkCallContext() or
-      TFeatureEqualSourceSinkCallContext()
+      TFeatureEqualSourceSinkCallContext() or
+      TFeatureEscapesSourceCallContext() or
+      TFeatureEscapesSourceCallContextOrEqualSourceSinkCallContext()
 
     /** A flow configuration feature for use in `Configuration::getAFeature()`. */
     class FlowFeature extends TFlowFeature {
@@ -75,6 +61,28 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
      */
     class FeatureEqualSourceSinkCallContext extends FlowFeature, TFeatureEqualSourceSinkCallContext {
       override string toString() { result = "FeatureEqualSourceSinkCallContext" }
+    }
+
+    /**
+     * A flow configuration feature that implies that the sink must be reached from
+     * the source by escaping the source call context, that is, flow must either
+     * return from the callable containing the source or use a jump-step before reaching
+     * the sink.
+     */
+    class FeatureEscapesSourceCallContext extends FlowFeature, TFeatureEscapesSourceCallContext {
+      override string toString() { result = "FeatureEscapesSourceCallContext" }
+    }
+
+    /**
+     * A flow configuration feature that is the disjunction of `FeatureEscapesSourceCallContext`
+     * and `FeatureEqualSourceSinkCallContext`.
+     */
+    class FeatureEscapesSourceCallContextOrEqualSourceSinkCallContext extends FlowFeature,
+      TFeatureEscapesSourceCallContextOrEqualSourceSinkCallContext
+    {
+      override string toString() {
+        result = "FeatureEscapesSourceCallContextOrEqualSourceSinkCallContext"
+      }
     }
 
     /**
@@ -288,6 +296,7 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
      * to `lambdaCall`, if any. That is, `lastCall` is able to target the enclosing
      * callable of `lambdaCall`.
      */
+    overlay[global]
     pragma[nomagic]
     predicate revLambdaFlow(
       Call lambdaCall, LambdaCallKind kind, Node node, Type t, boolean toReturn, boolean toJump,
@@ -674,6 +683,7 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
 
       class CcCall = CallContextCall;
 
+      overlay[caller?]
       pragma[inline]
       predicate matchesCall(CcCall cc, Call call) {
         cc = Input2::getSpecificCallContextCall(call, _) or
@@ -885,6 +895,7 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
     pragma[nomagic]
     private Callable getEnclosingCallable0() { nodeEnclosingCallable(this.projectToNode(), result) }
 
+    overlay[caller?]
     pragma[inline]
     Callable getEnclosingCallable() {
       pragma[only_bind_out](this).getEnclosingCallable0() = pragma[only_bind_into](result)
@@ -899,6 +910,7 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
       isTopType(result) and this.isImplicitReadNode(_)
     }
 
+    overlay[caller?]
     pragma[inline]
     Type getType() { pragma[only_bind_out](this).getType0() = pragma[only_bind_into](result) }
 
@@ -1785,12 +1797,12 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
     cached
     newtype TAccessPathFront =
       TFrontNil() or
-      TFrontHead(Content c)
+      TFrontHead(Content c, int length) { length in [1 .. accessPathLimit()] }
 
     cached
     newtype TApproxAccessPathFront =
       TApproxFrontNil() or
-      TApproxFrontHead(ContentApprox c)
+      TApproxFrontHead(ContentApprox c, int length) { length in [1 .. accessPathLimit()] }
 
     cached
     newtype TAccessPathFrontOption =
@@ -1861,6 +1873,9 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
   signature module TypeFlowInput {
     predicate enableTypeFlow();
 
+    /** Holds if `p` is a parameter of a callable with a source node that has a call context. */
+    predicate isParameterNodeInSourceCallContext(ParamNode p);
+
     /** Holds if the edge is possibly needed in the direction `call` to `c`. */
     predicate relevantCallEdgeIn(Call call, Callable c);
 
@@ -1921,6 +1936,9 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
     /**
      * Holds if a sequence of calls may propagate the value of `arg` to some
      * argument-to-parameter call edge that strengthens the static type.
+     *
+     * This predicate is a reverse flow computation, starting at calls that
+     * strengthen the type and then following relevant call edges backwards.
      */
     pragma[nomagic]
     private predicate trackedArgTypeCand(ArgNode arg) {
@@ -1955,6 +1973,9 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
      * Holds if `p` is part of a value-propagating call path where the
      * end-points have stronger types than the intermediate parameter and
      * argument nodes.
+     *
+     * This predicate is a forward flow computation, intersecting with the
+     * reverse flow computation done in `trackedArgTypeCand`.
      */
     private predicate trackedParamType(ParamNode p) {
       exists(Call call1, Callable c1, ArgNode argOut, Call call2, Callable c2, ArgNode argIn |
@@ -1980,6 +2001,8 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
         relevantCallEdge(_, _, arg, p) and
         typeStrongerThanFilter(at, pt)
       )
+      or
+      Input::isParameterNodeInSourceCallContext(p)
       or
       exists(ArgNode arg |
         trackedArgType(arg) and
@@ -2072,8 +2095,12 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
      * context.
      */
     private predicate typeFlowParamType(ParamNode p, Type t, boolean cc) {
-      exists(Callable c |
-        Input::dataFlowNonCallEntry(c, cc) and
+      exists(Callable c | Input::dataFlowNonCallEntry(c, cc) |
+        cc = true and
+        nodeEnclosingCallable(p, c) and
+        t = getSourceContextParameterNodeType(p)
+        or
+        (cc = false or not exists(getSourceContextParameterNodeType(p))) and
         trackedParamWithType(p, t, c)
       )
       or
@@ -2410,12 +2437,14 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
    * predicate ensures that joins go from `n` to the result instead of the other
    * way around.
    */
+  overlay[caller?]
   pragma[inline]
   Callable getNodeEnclosingCallable(Node n) {
     nodeEnclosingCallable(pragma[only_bind_out](n), pragma[only_bind_into](result))
   }
 
   /** Gets the type of `n` used for type pruning. */
+  overlay[caller?]
   pragma[inline]
   Type getNodeDataFlowType(Node n) {
     nodeType(pragma[only_bind_out](n), pragma[only_bind_into](result))
@@ -2476,31 +2505,33 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
 
     abstract boolean toBoolNonEmpty();
 
-    ContentApprox getHead() { this = TApproxFrontHead(result) }
+    abstract int length();
+
+    ContentApprox getHead(int length) { this = TApproxFrontHead(result, length) }
 
     pragma[nomagic]
-    Content getAHead() {
-      exists(ContentApprox cont |
-        this = TApproxFrontHead(cont) and
-        cont = getContentApproxCached(result)
-      )
-    }
+    Content getAHead(int length) { this.getHead(length) = getContentApproxCached(result) }
   }
 
   class ApproxAccessPathFrontNil extends ApproxAccessPathFront, TApproxFrontNil {
     override string toString() { result = "nil" }
 
     override boolean toBoolNonEmpty() { result = false }
+
+    override int length() { result = 0 }
   }
 
   class ApproxAccessPathFrontHead extends ApproxAccessPathFront, TApproxFrontHead {
     private ContentApprox c;
+    private int length;
 
-    ApproxAccessPathFrontHead() { this = TApproxFrontHead(c) }
+    ApproxAccessPathFrontHead() { this = TApproxFrontHead(c, length) }
 
-    override string toString() { result = c.toString() }
+    override string toString() { result = c + " (length: " + length + ")" }
 
     override boolean toBoolNonEmpty() { result = true }
+
+    override int length() { result = length }
   }
 
   /** An optional approximated access path front. */
@@ -2520,23 +2551,30 @@ module MakeImplCommon<LocationSig Location, InputSig<Location> Lang> {
 
     abstract ApproxAccessPathFront toApprox();
 
-    Content getHead() { this = TFrontHead(result) }
+    abstract int length();
+
+    Content getHead(int length) { this = TFrontHead(result, length) }
   }
 
   class AccessPathFrontNil extends AccessPathFront, TFrontNil {
     override string toString() { result = "nil" }
 
     override ApproxAccessPathFront toApprox() { result = TApproxFrontNil() }
+
+    override int length() { result = 0 }
   }
 
   class AccessPathFrontHead extends AccessPathFront, TFrontHead {
     private Content c;
+    private int length;
 
-    AccessPathFrontHead() { this = TFrontHead(c) }
+    AccessPathFrontHead() { this = TFrontHead(c, length) }
 
-    override string toString() { result = c.toString() }
+    override string toString() { result = c + " (length: " + length + ")" }
 
-    override ApproxAccessPathFront toApprox() { result.getAHead() = c }
+    override ApproxAccessPathFront toApprox() { result.getAHead(length) = c }
+
+    override int length() { result = length }
   }
 
   /** An optional access path front. */

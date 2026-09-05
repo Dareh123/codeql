@@ -2,6 +2,8 @@
  * Provides classes modeling security-relevant aspects of the standard libraries.
  * Note: some modeling is done internally in the dataflow/taint tracking implementation.
  */
+overlay[local?]
+module;
 
 private import python
 private import semmle.python.dataflow.new.DataFlow
@@ -242,6 +244,67 @@ module Stdlib {
         // TODO
         none()
       }
+    }
+  }
+
+  /**
+   * Provides models for the `urllib.parse.ParseResult` class
+   *
+   * See https://docs.python.org/3.9/library/urllib.parse.html#urllib.parse.ParseResult.
+   */
+  module ParseResult {
+    /** Gets a reference to the `urllib.parse.ParseResult` class. */
+    API::Node classRef() {
+      result = API::moduleImport("urllib").getMember("parse").getMember("ParseResult")
+      or
+      result = ModelOutput::getATypeNode("urllib.parse.ParseResult~Subclass").getASubclass*()
+    }
+
+    /**
+     * A source of instances of `urllib.parse.ParseResult`, extend this class to model new instances.
+     *
+     * This can include instantiations of the class, return values from function
+     * calls, or a special parameter that will be set when functions are called by an external
+     * library.
+     *
+     * Use the predicate `ParseResult::instance()` to get references to instances of `urllib.parse.ParseResult`.
+     */
+    abstract class InstanceSource extends DataFlow::LocalSourceNode { }
+
+    /** A direct instantiation of `urllib.parse.ParseResult`. */
+    private class ClassInstantiation extends InstanceSource, DataFlow::CallCfgNode {
+      ClassInstantiation() { this = classRef().getACall() }
+    }
+
+    /** Gets a reference to an instance of `urllib.parse.ParseResult`. */
+    private DataFlow::TypeTrackingNode instance(DataFlow::TypeTracker t) {
+      t.start() and
+      result instanceof InstanceSource
+      or
+      exists(DataFlow::TypeTracker t2 | result = instance(t2).track(t2, t))
+    }
+
+    /** Gets a reference to an instance of `urllib.parse.ParseResult`. */
+    DataFlow::Node instance() { instance(DataFlow::TypeTracker::end()).flowsTo(result) }
+
+    /**
+     * Taint propagation for `urllib.parse.ParseResult`.
+     */
+    private class InstanceTaintSteps extends InstanceTaintStepsHelper {
+      InstanceTaintSteps() { this = "urllib.parse.ParseResult" }
+
+      override DataFlow::Node getInstance() { result = instance() }
+
+      override string getAttributeName() {
+        result in [
+            "netloc", "path", "params", "query", "fragment", "username", "password", "hostname",
+            "port"
+          ]
+      }
+
+      override string getMethodName() { none() }
+
+      override string getAsyncMethodName() { none() }
     }
   }
 
@@ -2191,8 +2254,9 @@ module StdlibPrivate {
       DataFlow::CfgNode
     {
       WsgirefSimpleServerApplicationReturn() {
-        exists(WsgirefSimpleServerApplication requestHandler |
-          node = requestHandler.getAReturnValueFlowNode()
+        exists(WsgirefSimpleServerApplication requestHandler, Return ret |
+          ret.getScope() = requestHandler and
+          node.getNode() = ret.getValue()
         )
       }
 
@@ -2385,15 +2449,16 @@ module StdlibPrivate {
     }
 
     /** A method call on a HttpConnection that sends off a request */
-    private class RequestCall extends Http::Client::Request::Range, DataFlow::MethodCallNode {
+    private class RequestCall extends Http::Client::Request::Range instanceof DataFlow::MethodCallNode
+    {
       RequestCall() { this.calls(instance(_), ["request", "_send_request", "putrequest"]) }
 
-      DataFlow::Node getUrlArg() { result in [this.getArg(1), this.getArgByName("url")] }
+      DataFlow::Node getUrlArg() { result in [super.getArg(1), super.getArgByName("url")] }
 
       override DataFlow::Node getAUrlPart() {
         result = this.getUrlArg()
         or
-        this.getObject() = instance(result)
+        super.getObject() = instance(result)
       }
 
       override string getFramework() { result = "http.client.HTTP[S]Connection" }
@@ -2430,7 +2495,8 @@ module StdlibPrivate {
         // a request method
         exists(RequestCall call |
           nodeFrom = call.getUrlArg() and
-          nodeTo.(DataFlow::PostUpdateNode).getPreUpdateNode() = call.getObject()
+          nodeTo.(DataFlow::PostUpdateNode).getPreUpdateNode() =
+            call.(DataFlow::MethodCallNode).getObject()
         )
         or
         // `getresponse` call
@@ -2797,7 +2863,7 @@ module StdlibPrivate {
   /**
    * A hashing operation by supplying initial data when calling the `hashlib.new` function.
    */
-  class HashlibNewCall extends Cryptography::CryptographicOperation::Range, API::CallNode {
+  class HashlibNewCall extends Cryptography::CryptographicOperation::Range instanceof API::CallNode {
     string hashName;
 
     HashlibNewCall() {
@@ -2810,7 +2876,7 @@ module StdlibPrivate {
 
     override Cryptography::CryptographicAlgorithm getAlgorithm() { result.matchesName(hashName) }
 
-    override DataFlow::Node getAnInput() { result = this.getParameter(1, "data").asSink() }
+    override DataFlow::Node getAnInput() { result = super.getParameter(1, "data").asSink() }
 
     override Cryptography::BlockMode getBlockMode() { none() }
   }
@@ -2818,7 +2884,8 @@ module StdlibPrivate {
   /**
    * A hashing operation by using the `update` method on the result of calling the `hashlib.new` function.
    */
-  class HashlibNewUpdateCall extends Cryptography::CryptographicOperation::Range, API::CallNode {
+  class HashlibNewUpdateCall extends Cryptography::CryptographicOperation::Range instanceof API::CallNode
+  {
     API::CallNode init;
     string hashName;
 
@@ -2831,7 +2898,7 @@ module StdlibPrivate {
 
     override Cryptography::CryptographicAlgorithm getAlgorithm() { result.matchesName(hashName) }
 
-    override DataFlow::Node getAnInput() { result = this.getArg(0) }
+    override DataFlow::Node getAnInput() { result = super.getArg(0) }
 
     override Cryptography::BlockMode getBlockMode() { none() }
   }
@@ -2848,8 +2915,7 @@ module StdlibPrivate {
    * (such as `hashlib.md5`). `hashlib.new` is not included, since it is handled by
    * `HashlibNewCall` and `HashlibNewUpdateCall`.
    */
-  abstract class HashlibGenericHashOperation extends Cryptography::CryptographicOperation::Range,
-    DataFlow::CallCfgNode
+  abstract class HashlibGenericHashOperation extends Cryptography::CryptographicOperation::Range instanceof DataFlow::CallCfgNode
   {
     string hashName;
     API::Node hashClass;
@@ -2876,7 +2942,7 @@ module StdlibPrivate {
 
     override DataFlow::Node getInitialization() { result = init }
 
-    override DataFlow::Node getAnInput() { result = this.getArg(0) }
+    override DataFlow::Node getAnInput() { result = this.(DataFlow::CallCfgNode).getArg(0) }
   }
 
   /**
@@ -2888,24 +2954,28 @@ module StdlibPrivate {
       // we only want to model calls to classes such as `hashlib.md5()` if initial data
       // is passed as an argument
       this = hashClass.getACall() and
-      exists([this.getArg(0), this.getArgByName("string")])
+      exists(
+        [
+          this.(DataFlow::CallCfgNode).getArg(0),
+          this.(DataFlow::CallCfgNode).getArgByName("string")
+        ]
+      )
     }
 
     override DataFlow::Node getInitialization() { result = this }
 
     override DataFlow::Node getAnInput() {
-      result = this.getArg(0)
+      result = this.(DataFlow::CallCfgNode).getArg(0)
       or
       // in Python 3.9, you are allowed to use `hashlib.md5(string=<bytes-like>)`.
-      result = this.getArgByName("string")
+      result = this.(DataFlow::CallCfgNode).getArgByName("string")
     }
   }
 
   // ---------------------------------------------------------------------------
   // hmac
   // ---------------------------------------------------------------------------
-  abstract class HmacCryptographicOperation extends Cryptography::CryptographicOperation::Range,
-    API::CallNode
+  abstract class HmacCryptographicOperation extends Cryptography::CryptographicOperation::Range instanceof API::CallNode
   {
     abstract API::Node getDigestArg();
 
@@ -2937,14 +3007,16 @@ module StdlibPrivate {
     HmacNewCall() {
       this = getHmacConstructorCall(digestArg) and
       // we only want to consider it as an cryptographic operation if the input is available
-      exists(this.getParameter(1, "msg").asSink())
+      exists(this.(API::CallNode).getParameter(1, "msg").asSink())
     }
 
     override DataFlow::Node getInitialization() { result = this }
 
     override API::Node getDigestArg() { result = digestArg }
 
-    override DataFlow::Node getAnInput() { result = this.getParameter(1, "msg").asSink() }
+    override DataFlow::Node getAnInput() {
+      result = this.(API::CallNode).getParameter(1, "msg").asSink()
+    }
   }
 
   /**
@@ -2965,7 +3037,9 @@ module StdlibPrivate {
 
     override API::Node getDigestArg() { result = digestArg }
 
-    override DataFlow::Node getAnInput() { result = this.getParameter(0, "msg").asSink() }
+    override DataFlow::Node getAnInput() {
+      result = this.(API::CallNode).getParameter(0, "msg").asSink()
+    }
   }
 
   /**
@@ -2978,9 +3052,11 @@ module StdlibPrivate {
 
     override DataFlow::Node getInitialization() { result = this }
 
-    override API::Node getDigestArg() { result = this.getParameter(2, "digest") }
+    override API::Node getDigestArg() { result = this.(API::CallNode).getParameter(2, "digest") }
 
-    override DataFlow::Node getAnInput() { result = this.getParameter(1, "msg").asSink() }
+    override DataFlow::Node getAnInput() {
+      result = this.(API::CallNode).getParameter(1, "msg").asSink()
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -3114,7 +3190,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3.11/library/re.html#re-objects
    */
-  class RePatternSummary extends SummarizedCallable {
+  class RePatternSummary extends SummarizedCallable::Range {
     RePatternSummary() { this = "re.Pattern" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -3154,7 +3230,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3/library/re.html#re.Match
    */
-  class ReMatchSummary extends SummarizedCallable {
+  class ReMatchSummary extends SummarizedCallable::Range {
     ReMatchSummary() { this = ["re.Match", "compiled re.Match"] }
 
     override DataFlow::CallCfgNode getACall() {
@@ -3218,7 +3294,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3/library/re.html#re.Match
    */
-  class ReMatchMethodsSummary extends SummarizedCallable {
+  class ReMatchMethodsSummary extends SummarizedCallable::Range {
     string methodName;
 
     ReMatchMethodsSummary() {
@@ -3262,7 +3338,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3/library/re.html#functions
    */
-  class ReFunctionsSummary extends SummarizedCallable {
+  class ReFunctionsSummary extends SummarizedCallable::Range {
     string methodName;
 
     ReFunctionsSummary() {
@@ -3690,11 +3766,8 @@ module StdlibPrivate {
    * A call to a find method on a tree or an element will execute an XPath expression.
    */
   private class ElementTreeFindCall extends XML::XPathExecution::Range, DataFlow::CallCfgNode {
-    string methodName;
-
     ElementTreeFindCall() {
-      methodName in ["find", "findall", "findtext"] and
-      (
+      exists(string methodName | methodName in ["find", "findall", "findtext"] |
         this = elementTreeInstance().getMember(methodName).getACall()
         or
         this = elementInstance().getMember(methodName).getACall()
@@ -4113,7 +4186,7 @@ module StdlibPrivate {
    *
    * see https://docs.python.org/3/library/stdtypes.html#dict
    */
-  class DictSummary extends SummarizedCallable {
+  class DictSummary extends SummarizedCallable::Range {
     DictSummary() { this = "builtins.dict" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("dict").getACall() }
@@ -4126,11 +4199,9 @@ module StdlibPrivate {
       // The positional argument contains a mapping.
       // TODO: these values can be overwritten by keyword arguments
       //  - dict mapping
-      exists(DataFlow::DictionaryElementContent dc, string key | key = dc.getKey() |
-        input = "Argument[0].DictionaryElement[" + key + "]" and
-        output = "ReturnValue.DictionaryElement[" + key + "]" and
-        preservesValue = true
-      )
+      input = "Argument[0].WithAnyDictionaryElement" and
+      output = "ReturnValue" and
+      preservesValue = true
       or
       //  - list-of-pairs mapping
       input = "Argument[0].ListElement.TupleElement[1]" and
@@ -4152,7 +4223,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `list`. */
-  class ListSummary extends SummarizedCallable {
+  class ListSummary extends SummarizedCallable::Range {
     ListSummary() { this = "builtins.list" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("list").getACall() }
@@ -4167,11 +4238,10 @@ module StdlibPrivate {
         or
         input = "Argument[0].SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          input = "Argument[0].TupleElement[" + i.toString() + "]"
-        )
+        input = "Argument[0].AnyTupleElement"
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
       ) and
+      // Element content is mutated into list element content
       output = "ReturnValue.ListElement" and
       preservesValue = true
       or
@@ -4182,7 +4252,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for tuple */
-  class TupleSummary extends SummarizedCallable {
+  class TupleSummary extends SummarizedCallable::Range {
     TupleSummary() { this = "builtins.tuple" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("tuple").getACall() }
@@ -4192,22 +4262,18 @@ module StdlibPrivate {
     }
 
     override predicate propagatesFlow(string input, string output, boolean preservesValue) {
-      exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-        input = "Argument[0].TupleElement[" + i.toString() + "]" and
-        output = "ReturnValue.TupleElement[" + i.toString() + "]" and
-        preservesValue = true
-      )
-      or
-      // TODO: We need to also translate iterable content such as list element
-      //       but we currently lack TupleElementAny
-      input = "Argument[0]" and
+      input = "Argument[0].WithAnyTupleElement" and
       output = "ReturnValue" and
-      preservesValue = false
+      preservesValue = true
+      or
+      input = "Argument[0].ListElement" and
+      output = "ReturnValue" and
+      preservesValue = true
     }
   }
 
   /** A flow summary for set */
-  class SetSummary extends SummarizedCallable {
+  class SetSummary extends SummarizedCallable::Range {
     SetSummary() { this = "builtins.set" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("set").getACall() }
@@ -4222,9 +4288,7 @@ module StdlibPrivate {
         or
         input = "Argument[0].SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          input = "Argument[0].TupleElement[" + i.toString() + "]"
-        )
+        input = "Argument[0].AnyTupleElement"
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
       ) and
       output = "ReturnValue.SetElement" and
@@ -4237,7 +4301,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for frozenset */
-  class FrozensetSummary extends SummarizedCallable {
+  class FrozensetSummary extends SummarizedCallable::Range {
     FrozensetSummary() { this = "builtins.frozenset" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("frozenset").getACall() }
@@ -4255,7 +4319,7 @@ module StdlibPrivate {
   // Flow summaries for functions operating on containers
   // ---------------------------------------------------------------------------
   /** A flow summary for `reversed`. */
-  class ReversedSummary extends SummarizedCallable {
+  class ReversedSummary extends SummarizedCallable::Range {
     ReversedSummary() { this = "builtins.reversed" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("reversed").getACall() }
@@ -4270,9 +4334,7 @@ module StdlibPrivate {
         or
         input = "Argument[0].SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          input = "Argument[0].TupleElement[" + i.toString() + "]"
-        )
+        input = "Argument[0].AnyTupleElement"
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
       ) and
       output = "ReturnValue.ListElement" and
@@ -4285,7 +4347,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `sorted`. */
-  class SortedSummary extends SummarizedCallable {
+  class SortedSummary extends SummarizedCallable::Range {
     SortedSummary() { this = "builtins.sorted" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("sorted").getACall() }
@@ -4300,9 +4362,7 @@ module StdlibPrivate {
         or
         content = "SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          content = "TupleElement[" + i.toString() + "]"
-        )
+        content = "AnyTupleElement"
       |
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
         input = "Argument[0]." + content and
@@ -4317,7 +4377,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `iter`. */
-  class IterSummary extends SummarizedCallable {
+  class IterSummary extends SummarizedCallable::Range {
     IterSummary() { this = "builtins.iter" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("iter").getACall() }
@@ -4332,9 +4392,7 @@ module StdlibPrivate {
         or
         input = "Argument[0].SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          input = "Argument[0].TupleElement[" + i.toString() + "]"
-        )
+        input = "Argument[0].AnyTupleElement"
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
       ) and
       output = "ReturnValue.ListElement" and
@@ -4347,7 +4405,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `next`. */
-  class NextSummary extends SummarizedCallable {
+  class NextSummary extends SummarizedCallable::Range {
     NextSummary() { this = "builtins.next" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("next").getACall() }
@@ -4362,9 +4420,7 @@ module StdlibPrivate {
         or
         input = "Argument[0].SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          input = "Argument[0].TupleElement[" + i.toString() + "]"
-        )
+        input = "Argument[0].AnyTupleElement"
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
       ) and
       output = "ReturnValue" and
@@ -4377,7 +4433,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `map`. */
-  class MapSummary extends SummarizedCallable {
+  class MapSummary extends SummarizedCallable::Range {
     MapSummary() { this = "builtins.map" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("map").getACall() }
@@ -4396,9 +4452,7 @@ module StdlibPrivate {
           // We reduce generality slightly by not tracking tuple contents on list arguments beyond the first, for performance.
           // TODO: Once we have TupleElementAny, this generality can be increased.
           i = 0 and
-          exists(DataFlow::TupleElementContent tc, int j | j = tc.getIndex() |
-            input = "Argument[1].TupleElement[" + j.toString() + "]"
-          )
+          input = "Argument[1].AnyTupleElement"
           // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
         ) and
         output = "Argument[0].Parameter[" + i.toString() + "]" and
@@ -4412,7 +4466,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `filter`. */
-  class FilterSummary extends SummarizedCallable {
+  class FilterSummary extends SummarizedCallable::Range {
     FilterSummary() { this = "builtins.filter" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("filter").getACall() }
@@ -4427,9 +4481,7 @@ module StdlibPrivate {
         or
         input = "Argument[1].SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          input = "Argument[1].TupleElement[" + i.toString() + "]"
-        )
+        input = "Argument[1].AnyTupleElement"
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
       ) and
       (output = "Argument[0].Parameter[0]" or output = "ReturnValue.ListElement") and
@@ -4438,7 +4490,7 @@ module StdlibPrivate {
   }
 
   /**A summary for `enumerate`. */
-  class EnumerateSummary extends SummarizedCallable {
+  class EnumerateSummary extends SummarizedCallable::Range {
     EnumerateSummary() { this = "builtins.enumerate" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("enumerate").getACall() }
@@ -4453,9 +4505,7 @@ module StdlibPrivate {
         or
         input = "Argument[0].SetElement"
         or
-        exists(DataFlow::TupleElementContent tc, int i | i = tc.getIndex() |
-          input = "Argument[0].TupleElement[" + i.toString() + "]"
-        )
+        input = "Argument[0].AnyTupleElement"
         // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
       ) and
       output = "ReturnValue.ListElement.TupleElement[1]" and
@@ -4464,7 +4514,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `zip`. */
-  class ZipSummary extends SummarizedCallable {
+  class ZipSummary extends SummarizedCallable::Range {
     ZipSummary() { this = "builtins.zip" }
 
     override DataFlow::CallCfgNode getACall() { result = API::builtin("zip").getACall() }
@@ -4480,12 +4530,7 @@ module StdlibPrivate {
           or
           input = "Argument[" + i.toString() + "].SetElement"
           or
-          // We reduce generality slightly by not tracking tuple contents on arguments beyond the first two, for performance.
-          // TODO: Once we have TupleElementAny, this generality can be increased.
-          i in [0 .. 1] and
-          exists(DataFlow::TupleElementContent tc, int j | j = tc.getIndex() |
-            input = "Argument[" + i.toString() + "].TupleElement[" + j.toString() + "]"
-          )
+          input = "Argument[" + i.toString() + "].AnyTupleElement"
           // TODO: Once we have DictKeyContent, we need to transform that into ListElementContent
         ) and
         output = "ReturnValue.ListElement.TupleElement[" + i.toString() + "]" and
@@ -4498,7 +4543,7 @@ module StdlibPrivate {
   // Flow summaries for container methods
   // ---------------------------------------------------------------------------
   /** A flow summary for `copy`. */
-  class CopySummary extends SummarizedCallable {
+  class CopySummary extends SummarizedCallable::Range {
     CopySummary() { this = "collection.copy" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4508,12 +4553,6 @@ module StdlibPrivate {
     override DataFlow::ArgumentNode getACallback() { none() }
 
     override predicate propagatesFlow(string input, string output, boolean preservesValue) {
-      exists(DataFlow::Content c |
-        input = "Argument[self]." + c.getMaDRepresentation() and
-        output = "ReturnValue." + c.getMaDRepresentation() and
-        preservesValue = true
-      )
-      or
       input = "Argument[self]" and
       output = "ReturnValue" and
       preservesValue = true
@@ -4521,7 +4560,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `copy.replace`. */
-  class ReplaceSummary extends SummarizedCallable {
+  class ReplaceSummary extends SummarizedCallable::Range {
     ReplaceSummary() { this = "copy.replace" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4554,7 +4593,7 @@ module StdlibPrivate {
    * I also handles the default value when `pop` is called
    * on a dictionary, since that also does not depend on the key.
    */
-  class PopSummary extends SummarizedCallable {
+  class PopSummary extends SummarizedCallable::Range {
     PopSummary() { this = "collection.pop" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4585,7 +4624,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `dict.pop` */
-  class DictPopSummary extends SummarizedCallable {
+  class DictPopSummary extends SummarizedCallable::Range {
     string key;
 
     DictPopSummary() {
@@ -4608,7 +4647,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `dict.get` at specific content. */
-  class DictGetSummary extends SummarizedCallable {
+  class DictGetSummary extends SummarizedCallable::Range {
     string key;
 
     DictGetSummary() {
@@ -4636,7 +4675,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `dict.get` disregarding content. */
-  class DictGetAnySummary extends SummarizedCallable {
+  class DictGetAnySummary extends SummarizedCallable::Range {
     DictGetAnySummary() { this = "dict.get" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4659,7 +4698,7 @@ module StdlibPrivate {
   }
 
   /** A flow summary for `dict.popitem` */
-  class DictPopitemSummary extends SummarizedCallable {
+  class DictPopitemSummary extends SummarizedCallable::Range {
     DictPopitemSummary() { this = "dict.popitem" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4669,12 +4708,10 @@ module StdlibPrivate {
     override DataFlow::ArgumentNode getACallback() { none() }
 
     override predicate propagatesFlow(string input, string output, boolean preservesValue) {
-      exists(DataFlow::DictionaryElementContent dc, string key | key = dc.getKey() |
-        input = "Argument[self].DictionaryElement[" + key + "]" and
-        output = "ReturnValue.TupleElement[1]" and
-        preservesValue = true
-        // TODO: put `key` into "ReturnValue.TupleElement[0]"
-      )
+      input = "Argument[self].AnyDictionaryElement" and
+      output = "ReturnValue.TupleElement[1]" and
+      preservesValue = true
+      // TODO: put `key` into "ReturnValue.TupleElement[0]"
     }
   }
 
@@ -4683,7 +4720,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3.10/library/stdtypes.html#dict.setdefault
    */
-  class DictSetdefaultSummary extends SummarizedCallable {
+  class DictSetdefaultSummary extends SummarizedCallable::Range {
     DictSetdefaultSummary() { this = "dict.setdefault" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4708,7 +4745,7 @@ module StdlibPrivate {
    * This summary handles read and store steps. See `DictSetdefaultSummary`
    * for the dataflow steps.
    */
-  class DictSetdefaultKeySummary extends SummarizedCallable {
+  class DictSetdefaultKeySummary extends SummarizedCallable::Range {
     string key;
 
     DictSetdefaultKeySummary() {
@@ -4741,7 +4778,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3.10/library/stdtypes.html#dict.values
    */
-  class DictValues extends SummarizedCallable {
+  class DictValues extends SummarizedCallable::Range {
     DictValues() { this = "dict.values" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4753,11 +4790,9 @@ module StdlibPrivate {
     }
 
     override predicate propagatesFlow(string input, string output, boolean preservesValue) {
-      exists(DataFlow::DictionaryElementContent dc, string key | key = dc.getKey() |
-        input = "Argument[self].DictionaryElement[" + key + "]" and
-        output = "ReturnValue.ListElement" and
-        preservesValue = true
-      )
+      input = "Argument[self].AnyDictionaryElement" and
+      output = "ReturnValue.ListElement" and
+      preservesValue = true
       or
       input = "Argument[self]" and
       output = "ReturnValue" and
@@ -4770,7 +4805,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3.10/library/stdtypes.html#dict.keys
    */
-  class DictKeys extends SummarizedCallable {
+  class DictKeys extends SummarizedCallable::Range {
     DictKeys() { this = "dict.keys" }
 
     override DataFlow::CallCfgNode getACall() { result.(DataFlow::MethodCallNode).calls(_, "keys") }
@@ -4792,7 +4827,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3.10/library/stdtypes.html#dict.items
    */
-  class DictItems extends SummarizedCallable {
+  class DictItems extends SummarizedCallable::Range {
     DictItems() { this = "dict.items" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4804,11 +4839,9 @@ module StdlibPrivate {
     }
 
     override predicate propagatesFlow(string input, string output, boolean preservesValue) {
-      exists(DataFlow::DictionaryElementContent dc, string key | key = dc.getKey() |
-        input = "Argument[self].DictionaryElement[" + key + "]" and
-        output = "ReturnValue.ListElement.TupleElement[1]" and
-        preservesValue = true
-      )
+      input = "Argument[self].AnyDictionaryElement" and
+      output = "ReturnValue.ListElement.TupleElement[1]" and
+      preservesValue = true
       or
       // TODO: Add the keys to output list
       input = "Argument[self]" and
@@ -4822,7 +4855,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3.10/library/stdtypes.html#typesseq-mutable
    */
-  class ListAppend extends SummarizedCallable {
+  class ListAppend extends SummarizedCallable::Range {
     ListAppend() { this = "list.append" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4838,11 +4871,60 @@ module StdlibPrivate {
       input = "Argument[0]" and
       output = "Argument[self].ListElement" and
       preservesValue = true
-      or
-      // transfer taint from new element to this (TODO: remove in future when taint-handling is more in line with other languages)
-      input = "Argument[0]" and
-      output = "Argument[self]" and
-      preservesValue = false
+    }
+  }
+
+  /**
+   * A flow summary for `list.extend`.
+   *
+   * See https://docs.python.org/3.10/library/stdtypes.html#typesseq-mutable
+   */
+  class ListExtend extends SummarizedCallable::Range {
+    ListExtend() { this = "list.extend" }
+
+    override DataFlow::CallCfgNode getACall() {
+      result.(DataFlow::MethodCallNode).calls(_, "extend")
+    }
+
+    override DataFlow::ArgumentNode getACallback() {
+      result.(DataFlow::AttrRead).getAttributeName() = "extend"
+    }
+
+    override predicate propagatesFlow(string input, string output, boolean preservesValue) {
+      // elements of the newly added iterable are added to this
+      (
+        input = "Argument[0].ListElement"
+        or
+        input = "Argument[0].SetElement"
+        or
+        input = "Argument[0].AnyTupleElement"
+      ) and
+      output = "Argument[self].ListElement" and
+      preservesValue = true
+    }
+  }
+
+  /**
+   * A flow summary for `list.insert`.
+   *
+   * See https://docs.python.org/3.10/library/stdtypes.html#typesseq-mutable
+   */
+  class ListInsert extends SummarizedCallable::Range {
+    ListInsert() { this = "list.insert" }
+
+    override DataFlow::CallCfgNode getACall() {
+      result.(DataFlow::MethodCallNode).calls(_, "insert")
+    }
+
+    override DataFlow::ArgumentNode getACallback() {
+      result.(DataFlow::AttrRead).getAttributeName() = "insert"
+    }
+
+    override predicate propagatesFlow(string input, string output, boolean preservesValue) {
+      // newly added element added to this
+      input = "Argument[1]" and
+      output = "Argument[self].ListElement" and
+      preservesValue = true
     }
   }
 
@@ -4851,7 +4933,7 @@ module StdlibPrivate {
    *
    * See https://docs.python.org/3.10/library/stdtypes.html#frozenset.add
    */
-  class SetAdd extends SummarizedCallable {
+  class SetAdd extends SummarizedCallable::Range {
     SetAdd() { this = "set.add" }
 
     override DataFlow::CallCfgNode getACall() { result.(DataFlow::MethodCallNode).calls(_, "add") }
@@ -4865,11 +4947,6 @@ module StdlibPrivate {
       input = "Argument[0]" and
       output = "Argument[self].SetElement" and
       preservesValue = true
-      or
-      // transfer taint from new element to this (TODO: remove in future when taint-handling is more in line with other languages)
-      input = "Argument[0]" and
-      output = "Argument[self]" and
-      preservesValue = false
     }
   }
 
@@ -4878,7 +4955,7 @@ module StdlibPrivate {
    *
    * See https://devdocs.io/python~3.11/library/os#os.getenv
    */
-  class OsGetEnv extends SummarizedCallable {
+  class OsGetEnv extends SummarizedCallable::Range {
     OsGetEnv() { this = "os.getenv" }
 
     override DataFlow::CallCfgNode getACall() {
@@ -4894,6 +4971,26 @@ module StdlibPrivate {
       input in ["Argument[1]", "Argument[default:]"] and
       output = "ReturnValue" and
       preservesValue = true
+    }
+  }
+
+  /** A flow summary for `str.join`. */
+  class StrJoinSummary extends SummarizedCallable::Range {
+    StrJoinSummary() { this = "str.join" }
+
+    override DataFlow::CallCfgNode getACall() { result.(DataFlow::MethodCallNode).calls(_, "join") }
+
+    override DataFlow::ArgumentNode getACallback() {
+      result.(DataFlow::AttrRead).getAttributeName() = "join"
+    }
+
+    override predicate propagatesFlow(string input, string output, boolean preservesValue) {
+      (
+        // For code like `" ".join([name])`
+        input = "Argument[0,iterable:].ListElement" and
+        preservesValue = true
+      ) and
+      output = "ReturnValue"
     }
   }
 

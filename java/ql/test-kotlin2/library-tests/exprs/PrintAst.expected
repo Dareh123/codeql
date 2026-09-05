@@ -2520,22 +2520,21 @@ exprs.kt:
 #  137|           0: [GTExpr] ... > ...
 #  137|             0: [VarAccess] variable
 #  137|             1: [IntegerLiteral] 0
-#  137|           1: [BlockStmt] { ... }
-#  138|             0: [ExprStmt] <Expr>;
-#  138|               0: [ImplicitCoercionToUnitExpr] <implicit coercion to unit>
-#  138|                 0: [TypeAccess] Unit
-#  138|                 1: [StmtExpr] <Stmt>
-#  138|                   0: [BlockStmt] { ... }
-#  138|                     0: [LocalVariableDeclStmt] var ...;
-#  138|                       1: [LocalVariableDeclExpr] <unary>
-#  138|                         0: [VarAccess] variable
-#  138|                     1: [ExprStmt] <Expr>;
-#  138|                       0: [AssignExpr] ...=...
-#  138|                         0: [VarAccess] variable
-#  138|                         1: [MethodCall] dec(...)
-#  138|                           -1: [VarAccess] <unary>
-#  138|                     2: [ExprStmt] <Expr>;
-#  138|                       0: [VarAccess] <unary>
+#  138|           1: [ExprStmt] <Expr>;
+#  138|             0: [ImplicitCoercionToUnitExpr] <implicit coercion to unit>
+#  138|               0: [TypeAccess] Unit
+#  138|               1: [StmtExpr] <Stmt>
+#  138|                 0: [BlockStmt] { ... }
+#  138|                   0: [LocalVariableDeclStmt] var ...;
+#  138|                     1: [LocalVariableDeclExpr] <unary>
+#  138|                       0: [VarAccess] variable
+#  138|                   1: [ExprStmt] <Expr>;
+#  138|                     0: [AssignExpr] ...=...
+#  138|                       0: [VarAccess] variable
+#  138|                       1: [MethodCall] dec(...)
+#  138|                         -1: [VarAccess] <unary>
+#  138|                   2: [ExprStmt] <Expr>;
+#  138|                     0: [VarAccess] <unary>
 #  141|         119: [ReturnStmt] return ...
 #  141|           0: [AddExpr] ... + ...
 #  141|             0: [IntegerLiteral] 123
@@ -2624,7 +2623,9 @@ exprs.kt:
 #  167|               1: [BlockStmt] { ... }
 #  168|                 0: [LocalVariableDeclStmt] var ...;
 #  168|                   1: [LocalVariableDeclExpr] r2
-#  168|                     0: [VarAccess] r
+#  168|                     0: [ImplicitCastExpr] <implicit cast>
+#  168|                       0: [TypeAccess] Rectangle
+#  168|                       1: [VarAccess] r
 #  169|                 1: [LocalVariableDeclStmt] var ...;
 #  169|                   1: [LocalVariableDeclExpr] height
 #  169|                     0: [VarAccess] r2.height
@@ -3340,7 +3341,18 @@ exprs.kt:
 #  154|         0: [SuperConstructorInvocationStmt] super(...)
 #  154|         1: [BlockStmt] { ... }
 #  174|   6: [Class] Direction
-#  174|     2: [Constructor] Direction
+#    0|     2: [Method] getEntries
+#    0|       3: [TypeAccess] EnumEntries<Direction>
+#    0|         0: [TypeAccess] Direction
+#    0|     3: [Method] valueOf
+#    0|       3: [TypeAccess] Direction
+#-----|       4: (Parameters)
+#  174|         0: [Parameter] value
+#  174|           0: [TypeAccess] String
+#    0|     4: [Method] values
+#    0|       3: [TypeAccess] Direction[]
+#    0|         0: [TypeAccess] Direction
+#  174|     5: [Constructor] Direction
 #  174|       5: [BlockStmt] { ... }
 #  174|         0: [ExprStmt] <Expr>;
 #  174|           0: [ClassInstanceExpr] new Enum<Direction>(...)
@@ -3349,17 +3361,6 @@ exprs.kt:
 #  174|             0: [NullLiteral] null
 #  174|             1: [IntegerLiteral] 0
 #  174|         1: [BlockStmt] { ... }
-#  174|     3: [Method] getEntries
-#  174|       3: [TypeAccess] EnumEntries<Direction>
-#  174|         0: [TypeAccess] Direction
-#  174|     4: [Method] valueOf
-#  174|       3: [TypeAccess] Direction
-#-----|       4: (Parameters)
-#  174|         0: [Parameter] value
-#  174|           0: [TypeAccess] String
-#  174|     5: [Method] values
-#  174|       3: [TypeAccess] Direction[]
-#  174|         0: [TypeAccess] Direction
 #  175|     6: [FieldDeclaration] Direction NORTH;
 #  175|       -1: [TypeAccess] Direction
 #  175|       0: [ClassInstanceExpr] new Direction(...)
@@ -3377,17 +3378,17 @@ exprs.kt:
 #  175|       0: [ClassInstanceExpr] new Direction(...)
 #  175|         -3: [TypeAccess] Direction
 #  178|   7: [Class] Color
-#  178|     2: [Method] getEntries
-#  178|       3: [TypeAccess] EnumEntries<Color>
-#  178|         0: [TypeAccess] Color
-#  178|     3: [Method] valueOf
-#  178|       3: [TypeAccess] Color
+#    0|     2: [Method] getEntries
+#    0|       3: [TypeAccess] EnumEntries<Color>
+#    0|         0: [TypeAccess] Color
+#    0|     3: [Method] valueOf
+#    0|       3: [TypeAccess] Color
 #-----|       4: (Parameters)
 #  178|         0: [Parameter] value
 #  178|           0: [TypeAccess] String
-#  178|     4: [Method] values
-#  178|       3: [TypeAccess] Color[]
-#  178|         0: [TypeAccess] Color
+#    0|     4: [Method] values
+#    0|       3: [TypeAccess] Color[]
+#    0|         0: [TypeAccess] Color
 #  178|     5: [Constructor] Color
 #-----|       4: (Parameters)
 #  178|         0: [Parameter] rgb
@@ -3519,7 +3520,9 @@ exprs.kt:
 #  212|           1: [LocalVariableDeclExpr] b3
 #  212|             0: [AddExpr] ... + ...
 #  212|               0: [NotNullExpr] ...!!
-#  212|                 0: [VarAccess] s
+#  212|                 0: [ImplicitCastExpr] <implicit cast>
+#  212|                   0: [TypeAccess] String
+#  212|                   1: [VarAccess] s
 #  212|               1: [IntegerLiteral] 5
 #  213|         5: [LocalVariableDeclStmt] var ...;
 #  213|           1: [LocalVariableDeclExpr] c0

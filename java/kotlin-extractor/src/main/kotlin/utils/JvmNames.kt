@@ -1,7 +1,8 @@
 package com.github.codeql.utils
 
-import com.github.codeql.utils.versions.allOverriddenIncludingSelf
 import com.github.codeql.utils.versions.CodeQLIrConst
+import com.github.codeql.utils.versions.codeQlGetValueArgument
+import com.github.codeql.utils.versions.codeQlValueArgumentsCount
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.ir.declarations.IrAnnotationContainer
 import org.jetbrains.kotlin.ir.declarations.IrClass
@@ -9,6 +10,7 @@ import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.types.IrSimpleType
+import org.jetbrains.kotlin.ir.util.allOverridden
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.packageFqName
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
@@ -62,7 +64,7 @@ private val specialFunctionShortNames = specialFunctions.keys.map { it.functionN
 
 private fun getSpecialJvmName(f: IrFunction): String? {
     if (specialFunctionShortNames.contains(f.name) && f is IrSimpleFunction) {
-        f.allOverriddenIncludingSelf().forEach { overriddenFunc ->
+        f.allOverridden(includeSelf = true).forEach { overriddenFunc ->
             overriddenFunc.parentClassOrNull?.fqNameWhenAvailable?.let { parentFqName ->
                 specialFunctions[MethodKey(parentFqName, f.name)]?.let {
                     return it
@@ -76,9 +78,9 @@ private fun getSpecialJvmName(f: IrFunction): String? {
 fun getJvmName(container: IrAnnotationContainer): String? {
     for (a: IrConstructorCall in container.annotations) {
         val t = a.type
-        if (t is IrSimpleType && a.valueArgumentsCount == 1) {
+        if (t is IrSimpleType && a.codeQlValueArgumentsCount == 1) {
             val owner = t.classifier.owner
-            val v = a.getValueArgument(0)
+            val v = a.codeQlGetValueArgument(0)
             if (owner is IrClass) {
                 val aPkg = owner.packageFqName?.asString()
                 val name = owner.name.asString()

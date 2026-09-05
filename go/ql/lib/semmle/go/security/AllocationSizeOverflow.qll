@@ -27,7 +27,7 @@ module AllocationSizeOverflow {
   private module FindLargeLensFlow = TaintTracking::Global<FindLargeLensConfig>;
 
   private DataFlow::CallNode getALargeLenCall() {
-    exists(DataFlow::Node lenArg | FindLargeLensFlow::flow(_, lenArg) |
+    exists(DataFlow::Node lenArg | FindLargeLensFlow::flowTo(lenArg) |
       result.getArgument(0) = lenArg
     )
   }
@@ -54,6 +54,17 @@ module AllocationSizeOverflow {
         c = getALargeLenCall() and
         pred = c.getArgument(0) and
         succ = c
+      )
+    }
+
+    predicate observeDiffInformedIncrementalMode() { any() }
+
+    Location getASelectedSinkLocation(DataFlow::Node sink) {
+      result = sink.getLocation()
+      or
+      exists(DataFlow::Node allocsz |
+        isSinkWithAllocationSize(sink, allocsz) and
+        result = allocsz.getLocation()
       )
     }
   }

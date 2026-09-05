@@ -167,7 +167,7 @@ module Sinatra {
    * from the `locals` keyword argument to variables in the ERB template. The
    * second half is modeled by `ErbLocalsAccessSummary`.
    */
-  private class ErbLocalsSummary extends SummarizedCallable {
+  private class ErbLocalsSummary extends SummarizedCallable::Range {
     ErbLocalsSummary() { this = "Sinatra::Base#erb" }
 
     override MethodCall getACall() { result = any(ErbCall c).asExpr().getExpr() }
@@ -191,7 +191,7 @@ module Sinatra {
    * keyword argument to variables in the ERB template.
    * The first half is modeled by `ErbLocalsSummary`.
    */
-  private class ErbLocalsAccessSummary extends SummarizedCallable {
+  private class ErbLocalsAccessSummary extends SummarizedCallable::Range {
     private ErbLocalsHashSyntheticGlobal global;
     private string local;
 
@@ -289,7 +289,7 @@ module Sinatra {
   private predicate blockPostSelf(DataFlow::PostUpdateNode n, DataFlow::BlockNode b) {
     exists(SelfVariableAccessCfgNode self |
       n.getPreUpdateNode().asExpr() = self and
-      self.getScope() = b.asExpr().getAstNode()
+      self.getEnclosingCallable() = b.asExpr().getAstNode()
     )
   }
 

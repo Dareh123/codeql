@@ -61,6 +61,7 @@ import com.semmle.js.ast.IfStatement;
 import com.semmle.js.ast.ImportDeclaration;
 import com.semmle.js.ast.ImportDefaultSpecifier;
 import com.semmle.js.ast.ImportNamespaceSpecifier;
+import com.semmle.js.ast.ImportPhaseModifier;
 import com.semmle.js.ast.ImportSpecifier;
 import com.semmle.js.ast.LabeledStatement;
 import com.semmle.js.ast.Literal;
@@ -117,6 +118,9 @@ import com.semmle.util.io.WholeIO;
  * 4.0.3</a>, but does not support plugins, and always tracks full source locations.
  */
 public class Parser {
+  private static final Pattern LEGACY_MODULE_IMPORT_TAIL =
+      Pattern.compile("\\s+[A-Za-z_$][A-Za-z0-9_$]*\\s+from\\s*['\"]");
+
   protected final Options options;
   protected final Set<String> keywords;
   private final Set<String> reservedWords, reservedWordsStrict, reservedWordsStrictBind;
@@ -285,6 +289,7 @@ public class Parser {
     raise(pos, msg, false);
   }
 
+  @SuppressWarnings("ReturnValueIgnored")
   protected void raise(Position loc, String msg, boolean recoverable) {
     msg += " (" + loc.getLine() + ":" + loc.getColumn() + ")";
     SyntaxError err = new SyntaxError(msg, loc, this.pos);
@@ -788,7 +793,8 @@ public class Parser {
       String validFlags = "gim";
       if (this.options.ecmaVersion() >= 6) validFlags = "gimuy";
       if (this.options.ecmaVersion() >= 9) validFlags = "gimsuy";
-      if (this.options.ecmaVersion() >= 15) validFlags = "gimsuyv";
+      if (this.options.ecmaVersion() >= 13) validFlags = "dgimsuy";
+      if (this.options.ecmaVersion() >= 15) validFlags = "dgimsuyv";
       if (!mods.matches("^[" + validFlags + "]*$"))
         this.raise(start, "Invalid regular expression flag");
       if (mods.indexOf('u') >= 0) {
@@ -2716,6 +2722,18 @@ public class Parser {
   }
 
   /**
+   * Checks for the abandoned ES6 draft namespace-import syntax:
+   * {@code module namespace from "module-name";}.
+   */
+  boolean isLegacyModuleImport() {
+    if (this.type != TokenType.name || !this.value.equals("module")) return false;
+
+    Matcher matcher = LEGACY_MODULE_IMPORT_TAIL.matcher(this.input);
+    matcher.region(this.pos, this.input.length());
+    return matcher.lookingAt();
+  }
+
+  /**
    * Parse a single statement.
    *
    * <p>If expecting a statement and finding a slash operator, parse a regular expression literal.
@@ -2777,6 +2795,10 @@ public class Parser {
       return this.parseBlock(false);
     } else if (starttype == TokenType.semi) {
       return this.parseEmptyStatement(startLoc);
+    } else if (topLevel && this.isLegacyModuleImport()) {
+      if (!this.options.allowImportExportEverywhere() && !this.inModule)
+        this.raise(this.start, "Legacy module imports may appear only with 'sourceType: module'");
+      return this.parseLegacyModuleImport(startLoc);
     } else if (starttype == TokenType._export || starttype == TokenType._import) {
       if (!this.options.allowImportExportEverywhere()) {
         if (!topLevel)
@@ -3113,7 +3135,7 @@ public class Parser {
       }
       first = false;
     }
-    if (oldStrict == Boolean.FALSE) this.setStrict(false);
+    if (Boolean.FALSE.equals(oldStrict)) this.setStrict(false);
     return this.finishNode(new BlockStatement(new SourceLocation(startLoc), body));
   }
 
@@ -3574,6 +3596,29 @@ public class Parser {
     return parseImportRest(loc);
   }
 
+  /**
+   * Parses {@code module namespace from "module-name";} as the equivalent namespace import
+   * {@code import * as namespace from "module-name";}.
+   */
+  protected ImportDeclaration parseLegacyModuleImport(Position startLoc) {
+    SourceLocation loc = new SourceLocation(startLoc);
+    this.next();
+
+    SourceLocation specifierLoc = new SourceLocation(this.startLoc);
+    Identifier local = this.parseIdent(false);
+    this.checkLVal(local, true, null);
+    this.expectContextual("from");
+    if (this.type != TokenType.string) this.unexpected();
+    Literal source = (Literal) this.parseExprAtom(null);
+    this.semicolon();
+
+    List<ImportSpecifier> specifiers = new ArrayList<ImportSpecifier>();
+    specifiers.add(this.finishNode(new ImportNamespaceSpecifier(specifierLoc, local)));
+    return this.finishNode(
+        new ImportDeclaration(
+            loc, specifiers, source, null, ImportPhaseModifier.NONE));
+  }
+
   protected Expression parseImportOrExportAttributesAndSemicolon() {
     Expression result = null;
     if (!this.eagerlyTrySemicolon()) {
@@ -3587,6 +3632,7 @@ public class Parser {
   }
 
   protected ImportDeclaration parseImportRest(SourceLocation loc) {
+    ImportPhaseModifier[] phaseModifier = { ImportPhaseModifier.NONE };
     List<ImportSpecifier> specifiers;
     Literal source;
     // import '...'
@@ -3594,27 +3640,32 @@ public class Parser {
       specifiers = new ArrayList<ImportSpecifier>();
       source = (Literal) this.parseExprAtom(null);
     } else {
-      specifiers = this.parseImportSpecifiers();
+      specifiers = this.parseImportSpecifiers(phaseModifier);
       this.expectContextual("from");
       if (this.type != TokenType.string) this.unexpected();
       source = (Literal) this.parseExprAtom(null);
     }
     Expression attributes = this.parseImportOrExportAttributesAndSemicolon();
     if (specifiers == null) return null;
-    return this.finishNode(new ImportDeclaration(loc, specifiers, source, attributes));
+    return this.finishNode(new ImportDeclaration(loc, specifiers, source, attributes, phaseModifier[0]));
   }
 
   // Parses a comma-separated list of module imports.
-  protected List<ImportSpecifier> parseImportSpecifiers() {
+  protected List<ImportSpecifier> parseImportSpecifiers(ImportPhaseModifier[] phaseModifier) {
     List<ImportSpecifier> nodes = new ArrayList<ImportSpecifier>();
     boolean first = true;
     if (this.type == TokenType.name) {
       // import defaultObj, { x, y as z } from '...'
       SourceLocation loc = new SourceLocation(this.startLoc);
       Identifier local = this.parseIdent(false);
-      this.checkLVal(local, true, null);
-      nodes.add(this.finishNode(new ImportDefaultSpecifier(loc, local)));
-      if (!this.eat(TokenType.comma)) return nodes;
+      // Parse `import defer *` as the beginning of a deferred import, instead of a default import specifier
+      if (this.type == TokenType.star && local.getName().equals("defer")) {
+        phaseModifier[0] = ImportPhaseModifier.DEFER;
+      } else {
+        this.checkLVal(local, true, null);
+        nodes.add(this.finishNode(new ImportDefaultSpecifier(loc, local)));
+        if (!this.eat(TokenType.comma)) return nodes;
+      }
     }
     if (this.type == TokenType.star) {
       SourceLocation loc = new SourceLocation(this.startLoc);
@@ -3647,7 +3698,7 @@ public class Parser {
     if (this.type == TokenType.string) {
       // Arbitrary Module Namespace Identifiers
       // e.g. `import { "Foo::new" as Foo_new } from "./foo.wasm"`
-      Expression string = this.parseExprAtom(null);    
+      Expression string = this.parseExprAtom(null);
       String str = ((Literal)string).getStringValue();
       imported = this.finishNode(new Identifier(loc, str));
       // only makes sense if there is a local identifier

@@ -87,7 +87,9 @@ class LocalScopeVariable extends Variable, @local_scope_variable {
  * }
  * ```
  */
-class Parameter extends LocalScopeVariable, Attributable, TopLevelExprParent, @parameter {
+class Parameter extends LocalScopeVariable, Attributable, TopLevelExprParent, ControlFlowElement,
+  @parameter
+{
   /** Gets the raw position of this parameter, including the `this` parameter at index 0. */
   final int getRawPosition() { this = this.getDeclaringElement().getRawParameter(result) }
 
@@ -213,7 +215,7 @@ class Parameter extends LocalScopeVariable, Attributable, TopLevelExprParent, @p
     params(this, _, getTypeRef(result), _, _, _, _)
   }
 
-  override Location getALocation() { param_location(this, result) }
+  override Location getALocation() { param_location(this.getUnboundDeclaration(), result) }
 
   override string toString() { result = this.getName() }
 
@@ -408,7 +410,7 @@ class Field extends Variable, AssignableMember, Attributable, TopLevelExprParent
    * }
    * ```
    */
-  final override Expr getInitializer() { result = this.getChildExpr(0).getChildExpr(0) }
+  final override Expr getInitializer() { result = this.getChildExpr(0).getChildExpr(1) }
 
   /**
    * Holds if this field has an initial value. For example, the initial
@@ -449,7 +451,7 @@ class Field extends Variable, AssignableMember, Attributable, TopLevelExprParent
     fields(this, _, _, _, getTypeRef(result), _)
   }
 
-  override Location getALocation() { field_location(this, result) }
+  override Location getALocation() { field_location(this.getUnboundDeclaration(), result) }
 
   override string toString() { result = Variable.super.toString() }
 

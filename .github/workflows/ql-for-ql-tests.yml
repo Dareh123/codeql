@@ -24,12 +24,13 @@ jobs:
   qltest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Find codeql
         id: find-codeql
         uses: github/codeql-action/init@main
         with:
           languages: javascript # does not matter
+          tools: nightly
       - uses: ./.github/actions/os-version
         id: os_version
       - uses: actions/cache@v3
@@ -64,7 +65,7 @@ jobs:
     needs: [qltest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install GNU tar
         if: runner.os == 'macOS'
         run: |
@@ -75,6 +76,7 @@ jobs:
         uses: github/codeql-action/init@main
         with:
           languages: javascript # does not matter
+          tools: nightly
       - uses: ./.github/actions/os-version
         id: os_version
       - uses: actions/cache@v3

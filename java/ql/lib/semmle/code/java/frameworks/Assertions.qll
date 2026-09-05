@@ -1,10 +1,14 @@
 /**
+ * DEPRECATED.
+ *
  * A library providing uniform access to various assertion frameworks.
  *
  * Currently supports `org.junit.Assert`, `junit.framework.*`,
  * `org.junit.jupiter.api.Assertions`, `com.google.common.base.Preconditions`,
  * and `java.util.Objects`.
  */
+overlay[local?]
+deprecated module;
 
 import java
 

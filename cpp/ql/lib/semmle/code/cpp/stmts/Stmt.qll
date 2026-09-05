@@ -20,7 +20,7 @@ class Stmt extends StmtParent, @stmt {
   predicate hasChild(Element e, int n) { this.getChild(n) = e }
 
   /** Gets the enclosing function of this statement, if any. */
-  Function getEnclosingFunction() { result = stmtEnclosingElement(this) }
+  override Function getEnclosingFunction() { result = stmtEnclosingElement(this) }
 
   /**
    * Gets the nearest enclosing block of this statement in the source, if any.
@@ -159,7 +159,10 @@ private class TStmtParent = @stmt or @expr;
  *
  * This is normally a statement, but may be a `StmtExpr`.
  */
-class StmtParent extends ControlFlowNode, TStmtParent { }
+class StmtParent extends ControlFlowNode, TStmtParent {
+  /** Gets the enclosing function of this element, if any. */
+  Function getEnclosingFunction() { none() }
+}
 
 /**
  * A C/C++ 'expression' statement.
@@ -1409,9 +1412,9 @@ private int indexOfSwitchCaseRank(BlockStmt b, int rnk) {
  * switch (i)
  * {
  * case 5:
- *   ...
+ *     ...
  * default:
- *   ...
+ *     ...
  * }
  * ```
  */
@@ -1513,8 +1516,10 @@ class SwitchCase extends Stmt, @stmt_switch_case {
    * which has result `default:`, which has no result.
    */
   SwitchCase getNextSwitchCase() {
-    result.getSwitchStmt() = this.getSwitchStmt() and
-    result.getChildNum() = this.getChildNum() + 1
+    exists(SwitchStmt s, int n |
+      this = s.getSwitchCase(n) and
+      result = s.getSwitchCase(n + 1)
+    )
   }
 
   /**
@@ -1704,9 +1709,9 @@ class SwitchCase extends Stmt, @stmt_switch_case {
  * switch (i)
  * {
  * case 5:
- *   ...
+ *     ...
  * default:
- *   ...
+ *     ...
  * }
  * ```
  */
@@ -1728,9 +1733,9 @@ class DefaultCase extends SwitchCase {
  * switch (i)
  * {
  * case 5:
- *   ...
+ *     ...
  * default:
- *   ...
+ *     ...
  * }
  * ```
  */
@@ -1765,10 +1770,10 @@ class SwitchStmt extends ConditionalStmt, @stmt_switch {
    * For example, for
    * ```
    * switch(i) {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
-   *     default:
+   * default:
    *     break;
    * }
    * ```
@@ -1787,20 +1792,20 @@ class SwitchStmt extends ConditionalStmt, @stmt_switch {
    * For example, for
    * ```
    * switch(i) {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
-   *     default:
+   * default:
    *     break;
    * }
    * ```
    * the result is
    * ```
    * {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
-   *     default:
+   * default:
    *     break;
    * }
    * ```
@@ -1813,10 +1818,10 @@ class SwitchStmt extends ConditionalStmt, @stmt_switch {
    * For example, for
    * ```
    * switch(i) {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
-   *     default:
+   * default:
    *     break;
    * }
    * ```
@@ -1825,24 +1830,41 @@ class SwitchStmt extends ConditionalStmt, @stmt_switch {
   SwitchCase getASwitchCase() { switch_case(underlyingElement(this), _, unresolveElement(result)) }
 
   /**
+   * Gets the `n`th 'switch case' statement of this 'switch' statement, where
+   * `n` is 0-based.
+   *
+   * For example, for
+   * ```
+   * switch(i) {
+   * case 5:
+   * case 6:
+   * default:
+   * }   * ```
+   * 0 yields `case 5:`, 1 yields `case 6:`, and 2 yields `default:`.
+   */
+  SwitchCase getSwitchCase(int n) {
+    switch_case(underlyingElement(this), n, unresolveElement(result))
+  }
+
+  /**
    * Gets the 'default case' statement of this 'switch' statement,
    * if any.
    *
    * For example, for
    * ```
    * switch(i) {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
-   *     default:
+   * default:
    *     break;
    * }
    * ```
    * the result is `default:`, but there is no result for
    * ```
    * switch(i) {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
    * }
    * ```
@@ -1855,18 +1877,18 @@ class SwitchStmt extends ConditionalStmt, @stmt_switch {
    * For example, this holds for
    * ```
    * switch(i) {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
-   *     default:
+   * default:
    *     break;
    * }
    * ```
    * but not for
    * ```
    * switch(i) {
-   *     case 1:
-   *     case 2:
+   * case 1:
+   * case 2:
    *     break;
    * }
    * ```
@@ -2356,6 +2378,20 @@ class VlaDeclStmt extends Stmt, @stmt_vla_decl {
   }
 
   /**
+   * Gets the number of VLA dimension statements in this VLA declaration
+   * statement and transitively of the VLA declaration used to define its
+   * base type. if any.
+   */
+  int getTransitiveNumberOfVlaDimensionStmts() {
+    not exists(this.getParentVlaDecl()) and
+    result = this.getNumberOfVlaDimensionStmts()
+    or
+    result =
+      this.getNumberOfVlaDimensionStmts() +
+        this.getParentVlaDecl().getTransitiveNumberOfVlaDimensionStmts()
+  }
+
+  /**
    * Gets the `i`th VLA dimension statement in this VLA
    * declaration statement.
    */
@@ -2365,6 +2401,19 @@ class VlaDeclStmt extends Stmt, @stmt_vla_decl {
       this = b.getStmt(j) and
       result = b.getStmt(j - this.getNumberOfVlaDimensionStmts() + i)
     )
+  }
+
+  /**
+   * Gets the `i`th VLA dimension statement in this VLA declaration
+   * statement or transitively of the VLA declaration used to define
+   * its base type.
+   */
+  VlaDimensionStmt getTransitiveVlaDimensionStmt(int i) {
+    i < this.getNumberOfVlaDimensionStmts() and
+    result = this.getVlaDimensionStmt(i)
+    or
+    result =
+      this.getParentVlaDecl().getTransitiveVlaDimensionStmt(i - this.getNumberOfVlaDimensionStmts())
   }
 
   /**
@@ -2378,4 +2427,31 @@ class VlaDeclStmt extends Stmt, @stmt_vla_decl {
    * if any.
    */
   Variable getVariable() { variable_vla(unresolveElement(result), underlyingElement(this)) }
+
+  /**
+   * Get the VLA declaration used to define the base type of
+   * this VLA declaration, if any.
+   */
+  VlaDeclStmt getParentVlaDecl() {
+    exists(Variable v, Type baseType |
+      v = this.getVariable() and
+      baseType = this.getBaseType(v.getType(), this.getNumberOfVlaDimensionStmts())
+    |
+      result.getType() = baseType
+    )
+    or
+    exists(Type t, Type baseType |
+      t = this.getType().(TypedefType).getBaseType() and
+      baseType = this.getBaseType(t, this.getNumberOfVlaDimensionStmts())
+    |
+      result.getType() = baseType
+    )
+  }
+
+  private Type getBaseType(Type type, int n) {
+    n = 0 and
+    result = type
+    or
+    result = this.getBaseType(type.(DerivedType).getBaseType(), n - 1)
+  }
 }

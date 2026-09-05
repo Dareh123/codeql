@@ -213,7 +213,8 @@ module SummaryModelGeneratorInput implements SummaryModelGeneratorInputSig {
   }
 
   private Callable getARelevantOverrideeOrImplementee(Overridable m) {
-    m.overridesOrImplements(result) and relevant(result)
+    exists(Callable c | m.overridesOrImplements(c) and result = c.getUnboundDeclaration()) and
+    relevant(result)
   }
 
   /**
@@ -230,7 +231,7 @@ module SummaryModelGeneratorInput implements SummaryModelGeneratorInputSig {
   }
 
   private predicate hasManualSummaryModel(Callable api) {
-    api = any(FlowSummaryImpl::Public::SummarizedCallable sc | sc.applyManualModel()) or
+    api = any(FlowSummaryImpl::Public::SummarizedCallable sc | sc.hasManualModel()) or
     api = any(FlowSummaryImpl::Public::NeutralSummaryCallable sc | sc.hasManualModel())
   }
 
@@ -259,6 +260,8 @@ module SummaryModelGeneratorInput implements SummaryModelGeneratorInputSig {
       DataFlowPrivate::readStep(nodeFrom, c, nodeTo) and containerContent(c)
     )
   }
+
+  int contentAccessPathLimitInternal() { result = 2 }
 
   bindingset[d]
   private string getFullyQualifiedName(Declaration d) {

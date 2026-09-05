@@ -1,4 +1,5 @@
 import rust
+private import codeql.rust.internal.PathResolution
 
 /**
  * A deliberately unused variable, for example `_` or `_x`.
@@ -23,9 +24,13 @@ predicate isUnused(Variable v) {
  */
 class IncompleteCallable extends Callable {
   IncompleteCallable() {
-    exists(MacroExpr me |
-      me.getEnclosingCallable() = this and
+    exists(MacroExpr me | me.getEnclosingCallable() = this |
       not me.getMacroCall().hasMacroCallExpansion()
+      or
+      exists(ItemNode i |
+        i.getCanonicalPath(_) = ["core::macros::unimplemented", "core::macros::todo"] and
+        me.getMacroCall().resolveMacro() = i
+      )
     )
   }
 }
@@ -36,11 +41,17 @@ class IncompleteCallable extends Callable {
  */
 predicate isAllowableUnused(Variable v) {
   // in a macro expansion
-  v.getPat().isInMacroExpansion()
+  v.getPat().isInMacroExpansion() // TODO: replace with `isFromMacroExpansion()` when false positives have been removed
   or
   // declared in an incomplete callable
   v.getEnclosingCfgScope() instanceof IncompleteCallable
   or
   // a 'self' variable
   v.getText() = "self"
+  or
+  // a common source of false positives is match arms containing constants
+  // (typically beginning with a capital letter) that are misrecognized as a
+  // variable, having not been correctly resolved.
+  v.getPat().getParentNode() instanceof MatchArm and
+  v.getText().charAt(0).isUppercase()
 }

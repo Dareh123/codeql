@@ -1,4 +1,4 @@
-fn source(i: i64) -> i64 {
+const fn source(i: i64) -> i64 {
     1000 + i
 }
 
@@ -24,18 +24,18 @@ struct MyStruct {
 
 impl MyStruct {
     fn set_data(&mut self, n: i64) {
-        (*self).data = n // todo: implicit deref not yet supported
+        self.data = n
     }
 
     fn get_data(&self) -> i64 {
-        (*self).data // todo: implicit deref not yet supported
+        self.data
     }
 }
 
 fn data_out_of_call_side_effect1() {
     let mut a = MyStruct { data: 0 };
     sink(a.get_data());
-    (&mut a).set_data(source(8));
+    a.set_data(source(8));
     sink(a.get_data()); // $ hasValueFlow=8
 }
 
@@ -94,6 +94,12 @@ struct MyFlag {
     flag: bool,
 }
 
+trait MyTrait {
+    fn data_in_trait(self, n: i64);
+    fn get_data_trait(self) -> i64;
+    fn data_through_trait(self, n: i64) -> i64;
+}
+
 impl MyFlag {
     fn data_in(self, n: i64) {
         sink(n); // $ hasValueFlow=1 hasValueFlow=8
@@ -116,16 +122,66 @@ impl MyFlag {
     }
 }
 
+impl MyTrait for MyFlag {
+    fn data_in_trait(self, n: i64) {
+        sink(n); // $ hasValueFlow=22 $ hasValueFlow=31
+    }
+
+    fn get_data_trait(self) -> i64 {
+        if self.flag {
+            0
+        } else {
+            source(21)
+        }
+    }
+
+    fn data_through_trait(self, n: i64) -> i64 {
+        if self.flag {
+            0
+        } else {
+            n
+        }
+    }
+}
+
+fn data_out_of_method_trait_dispatch<T: MyTrait>(x: T) {
+    let a = x.get_data_trait();
+    sink(a); // $ hasValueFlow=21
+}
+
 fn data_out_of_method() {
     let mn = MyFlag { flag: true };
     let a = mn.get_data();
     sink(a); // $ hasValueFlow=2
+
+    let mn = MyFlag { flag: true };
+    let a = mn.get_data_trait();
+    sink(a); // $ hasValueFlow=21
+
+    data_out_of_method_trait_dispatch(MyFlag { flag: true });
+}
+
+fn data_in_to_method_call_trait_dispatch<T: MyTrait>(x: T) {
+    let a = source(31);
+    x.data_in_trait(a);
 }
 
 fn data_in_to_method_call() {
     let mn = MyFlag { flag: true };
     let a = source(1);
-    mn.data_in(a)
+    mn.data_in(a);
+
+    let mn = MyFlag { flag: true };
+    let a = source(22);
+    mn.data_in_trait(a);
+
+    data_in_to_method_call_trait_dispatch(MyFlag { flag: true });
+}
+
+fn data_through_method_trait_dispatch<T: MyTrait>(x: T) {
+    let a = source(34);
+    let b = x.data_through_trait(a);
+    sink(b); // $ hasValueFlow=34
 }
 
 fn data_through_method() {
@@ -133,6 +189,13 @@ fn data_through_method() {
     let a = source(4);
     let b = mn.data_through(a);
     sink(b); // $ hasValueFlow=4
+
+    let mn = MyFlag { flag: true };
+    let a = source(24);
+    let b = mn.data_through_trait(a);
+    sink(b); // $ hasValueFlow=24
+
+    data_through_method_trait_dispatch(MyFlag { flag: true });
 }
 
 fn data_in_to_method_called_as_function() {
@@ -178,7 +241,7 @@ impl Add for MyInt {
 
 impl MulAssign<MyInt> for MyInt {
     fn mul_assign(&mut self, rhs: MyInt) {
-        (*self).value = rhs.value; // todo: implicit deref not yet supported
+        self.value = rhs.value;
     }
 }
 
@@ -212,31 +275,35 @@ fn test_operator_overloading() {
     let b = MyInt { value: source(34) };
     // The line below is what `*=` desugars to.
     MulAssign::mul_assign(&mut a, b);
-    sink(a.value); // $ MISSING: hasValueFlow=34
+    sink(a.value); // $ hasValueFlow=34
 
     let mut a = MyInt { value: 0 };
     let b = MyInt { value: source(35) };
     a *= b;
-    sink(a.value); // $ MISSING: hasValueFlow=35
+    sink(a.value); // $ hasValueFlow=35
 
     // Tests for deref operator.
     let a = MyInt { value: source(27) };
     // The line below is what the prefix `*` desugars to.
     let c = *Deref::deref(&a);
-    sink(c); // $ MISSING: hasValueFlow=27
+    sink(c); // $ hasValueFlow=27
 
     let a = MyInt { value: source(28) };
     let c = *a;
-    sink(c); // $ hasTaintFlow=28 MISSING: hasValueFlow=28
+    sink(c); // $ hasValueFlow=28
+
+    let a = MyInt { value: source(29) };
+    let c = a.min(1042);
+    sink(c); // $ hasValueFlow=29
 }
 
-trait MyTrait {
+trait MyTrait2 {
     type Output;
     fn take_self(self, _other: Self::Output) -> Self::Output;
     fn take_second(self, other: Self::Output) -> Self::Output;
 }
 
-impl MyTrait for MyInt {
+impl MyTrait2 for MyInt {
     type Output = MyInt;
 
     fn take_self(self, _other: MyInt) -> MyInt {
@@ -251,17 +318,17 @@ impl MyTrait for MyInt {
 fn data_through_trait_method_called_as_function() {
     let a = MyInt { value: source(8) };
     let b = MyInt { value: 2 };
-    let MyInt { value: c } = MyTrait::take_self(a, b);
+    let MyInt { value: c } = MyTrait2::take_self(a, b);
     sink(c); // $ hasValueFlow=8
 
     let a = MyInt { value: 0 };
     let b = MyInt { value: source(37) };
-    let MyInt { value: c } = MyTrait::take_second(a, b);
+    let MyInt { value: c } = MyTrait2::take_second(a, b);
     sink(c); // $ hasValueFlow=37
 
     let a = MyInt { value: 0 };
     let b = MyInt { value: source(38) };
-    let MyInt { value: c } = MyTrait::take_self(a, b);
+    let MyInt { value: c } = MyTrait2::take_self(a, b);
     sink(c);
 }
 
@@ -273,7 +340,7 @@ async fn async_source() -> i64 {
 
 async fn test_async_await_async_part() {
     let a = async_source().await;
-    sink(a); // $ MISSING: hasValueFlow=1
+    sink(a); // $ hasTaintFlow=1 MISSING: hasValueFlow=1
 
     let b = async {
         let c = source(2);
@@ -288,6 +355,88 @@ fn test_async_await() {
     sink(a); // $ hasValueFlow=1
 
     futures::executor::block_on(test_async_await_async_part());
+}
+
+mod not_trait_dispatch {
+    use super::{sink, source};
+
+    trait HasNumbers {
+        fn get_number(&self) -> i64;
+
+        fn get_double_number(&self) -> i64 {
+            self.get_number() * 2
+        }
+
+        fn get_default() -> i64 {
+            source(0)
+        }
+    }
+
+    struct Three;
+
+    impl HasNumbers for Three {
+        fn get_number(&self) -> i64 {
+            source(3)
+        }
+    }
+
+    struct TwentyTwo;
+
+    impl HasNumbers for TwentyTwo {
+        fn get_number(&self) -> i64 {
+            22
+        }
+
+        fn get_double_number(&self) -> i64 {
+            source(44)
+        }
+
+        fn get_default() -> i64 {
+            source(1)
+        }
+    }
+
+    fn test_non_trait_dispatch() {
+        let t = Three;
+
+        // This call is to the default method implementation.
+        let n1 = t.get_double_number();
+        sink(n1); // $ hasTaintFlow=3
+
+        // This call is to the default method implementation.
+        let n2 = HasNumbers::get_double_number(&t);
+        sink(n2); // $ hasTaintFlow=3
+
+        // This call is to the default function implementation.
+        let n3 = Three::get_default();
+        sink(n3); // $ hasValueFlow=0
+
+        let i = TwentyTwo;
+        let n4 = i.get_double_number();
+        sink(n4); // $ hasValueFlow=44
+
+        let n5 = TwentyTwo::get_default();
+        sink(n5); // $ hasValueFlow=1
+    }
+}
+
+mod const_static {
+    use super::{sink, source};
+
+    const CONST_VALUE: i64 = source(42);
+    static mut STATIC_VALUE: i64 = source(43);
+
+    fn test_const_static() {
+        const CONST_VALUE2: i64 = CONST_VALUE;
+        sink(CONST_VALUE2); // $ hasValueFlow=42
+        unsafe {
+            let static_value = STATIC_VALUE;
+            sink(static_value); // $ hasValueFlow=43 $ SPURIOUS: hasValueFlow=44 (statics are not control-flow sensitive)
+
+            STATIC_VALUE = source(44);
+            sink(STATIC_VALUE); // $ hasValueFlow=44 $ SPURIOUS: hasValueFlow=43 (statics are not control-flow sensitive)
+        }
+    }
 }
 
 fn main() {

@@ -1,3 +1,133 @@
+## 1.3.10
+
+No user-facing changes.
+
+## 1.3.9
+
+No user-facing changes.
+
+## 1.3.8
+
+No user-facing changes.
+
+## 1.3.7
+
+No user-facing changes.
+
+## 1.3.6
+
+No user-facing changes.
+
+## 1.3.5
+
+### Minor Analysis Improvements
+
+* Fixed an issue where common usage patterns for `CryptoKit` weren't being recognized as hashing sinks for the `swift/weak-sensitive-data-hashing` and `swift/weak-password-hashing` queries. These queries may find additional results after this change.
+
+## 1.3.4
+
+No user-facing changes.
+
+## 1.3.3
+
+No user-facing changes.
+
+## 1.3.2
+
+No user-facing changes.
+
+## 1.3.1
+
+No user-facing changes.
+
+## 1.3.0
+
+### Query Metadata Changes
+
+* The `@security-severity` metadata of `swift/unsafe-webview-fetch` has been increased from 6.1 (medium) to 7.8 (high).
+
+## 1.2.20
+
+No user-facing changes.
+
+## 1.2.19
+
+No user-facing changes.
+
+## 1.2.18
+
+No user-facing changes.
+
+## 1.2.17
+
+No user-facing changes.
+
+## 1.2.16
+
+No user-facing changes.
+
+## 1.2.15
+
+No user-facing changes.
+
+## 1.2.14
+
+No user-facing changes.
+
+## 1.2.13
+
+No user-facing changes.
+
+## 1.2.12
+
+No user-facing changes.
+
+## 1.2.11
+
+No user-facing changes.
+
+## 1.2.10
+
+No user-facing changes.
+
+## 1.2.9
+
+No user-facing changes.
+
+## 1.2.8
+
+No user-facing changes.
+
+## 1.2.7
+
+No user-facing changes.
+
+## 1.2.6
+
+No user-facing changes.
+
+## 1.2.5
+
+No user-facing changes.
+
+## 1.2.4
+
+### Bug Fixes
+
+* Fixed an inconsistency across languages where most have a `Customizations.qll` file for adding customizations, but not all did.
+
+## 1.2.3
+
+No user-facing changes.
+
+## 1.2.2
+
+No user-facing changes.
+
+## 1.2.1
+
+No user-facing changes.
+
 ## 1.2.0
 
 ### Query Metadata Changes

@@ -6,19 +6,29 @@ go_library(
     name = "util",
     srcs = [
         "extractvendordirs.go",
-        "registryproxy.go",
+        "logging.go",
+        "overlays.go",
         "semver.go",
+        "subst_other.go",
+        "subst_windows.go",
         "util.go",
     ],
     importpath = "github.com/github/codeql-go/extractor/util",
     visibility = ["//visibility:public"],
-    deps = ["@org_golang_x_mod//semver"],
+    deps = [
+        "@org_golang_x_mod//semver",
+    ] + select({
+        "@rules_go//go/platform:windows": [
+            "@org_golang_x_sys//windows",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 go_test(
     name = "util_test",
     srcs = [
-        "registryproxy_test.go",
+        "logging_test.go",
         "semver_test.go",
         "util_test.go",
     ],

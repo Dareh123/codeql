@@ -43,6 +43,17 @@ externalData(
 snapshotDate(unique date snapshotDate : date ref);
 
 sourceLocationPrefix(varchar(900) prefix : string ref);
+
+/** Overlay support **/
+
+databaseMetadata(
+  string metadataKey: string ref,
+  string value: string ref
+);
+
+overlayChangedFiles(
+  string path: string ref
+);
 `)
 
 // Copied directly from the XML dbscheme
@@ -1230,4 +1241,5 @@ var TypeParamTable = NewTable("typeparam",
 	EntityColumn(CompositeType, "bound"),
 	EntityColumn(TypeParamParentObjectType, "parent"),
 	IntColumn("idx"),
-).KeySet("parent", "idx")
+	BooleanColumn("is_from_recv"),
+).KeySet("parent", "idx", "is_from_recv")

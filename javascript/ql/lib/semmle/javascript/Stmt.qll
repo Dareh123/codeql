@@ -1,4 +1,6 @@
 /** Provides classes for working with statements. */
+overlay[local?]
+module;
 
 import javascript
 
@@ -431,6 +433,62 @@ module Directive {
    */
   class UseClientDirective extends KnownDirective {
     UseClientDirective() { this.getDirectiveText() = "use client" }
+  }
+
+  /**
+   * A `use memo` directive.
+   *
+   * Example:
+   *
+   * ```
+   * "use memo";
+   * ```
+   */
+  class UseMemoDirective extends KnownDirective {
+    UseMemoDirective() { this.getDirectiveText() = "use memo" }
+  }
+
+  /**
+   * A `use no memo` directive.
+   *
+   * Example:
+   *
+   * ```
+   * "use no memo";
+   * ```
+   */
+  class UseNoMemoDirective extends KnownDirective {
+    UseNoMemoDirective() { this.getDirectiveText() = "use no memo" }
+  }
+
+  /**
+   * A `use cache` directive.
+   *
+   * Examples:
+   *
+   * ```
+   * "use cache";
+   * "use cache: remote";
+   * "use cache: private";
+   * ```
+   */
+  class UseCacheDirective extends KnownDirective {
+    UseCacheDirective() { this.getDirectiveText().regexpMatch("use cache(:.*)?") }
+  }
+
+  /**
+   * A React Native Worklets worklet directive.
+   *
+   * Example:
+   *
+   * ```
+   * function myWorklet() {
+   *   "worklet";
+   * }
+   * ```
+   */
+  class WorkletDirective extends KnownDirective {
+    WorkletDirective() { this.getDirectiveText() = "worklet" }
   }
 }
 

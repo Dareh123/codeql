@@ -1,3 +1,6 @@
+overlay[local?]
+module;
+
 module Private {
   private import java as J
   private import semmle.code.java.dataflow.SSA as Ssa
@@ -8,9 +11,11 @@ module Private {
 
   class BasicBlock = BB::BasicBlock;
 
-  class SsaVariable = Ssa::SsaVariable;
+  class SsaVariable extends Ssa::SsaDefinition {
+    Expr getAUse() { result = super.getARead() }
+  }
 
-  class SsaPhiNode = Ssa::SsaPhiNode;
+  class SsaPhiNode = Ssa::SsaPhiDefinition;
 
   class Expr = J::Expr;
 

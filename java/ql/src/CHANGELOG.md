@@ -1,3 +1,174 @@
+## 1.11.10
+
+No user-facing changes.
+
+## 1.11.9
+
+No user-facing changes.
+
+## 1.11.8
+
+No user-facing changes.
+
+## 1.11.7
+
+No user-facing changes.
+
+## 1.11.6
+
+No user-facing changes.
+
+## 1.11.5
+
+No user-facing changes.
+
+## 1.11.4
+
+No user-facing changes.
+
+## 1.11.3
+
+### Minor Analysis Improvements
+
+* The `java/zipslip` query no longer reports archive entry names that flow only to read-only path sinks such as `ClassLoader.getResource`, `FileInputStream`, and `FileReader`. The query now restricts its sinks to the `path-injection` kind and deliberately excludes the new `path-injection[read]` sub-kind, matching the Zip Slip threat model of unsafe archive extraction.
+
+## 1.11.2
+
+No user-facing changes.
+
+## 1.11.1
+
+No user-facing changes.
+
+## 1.11.0
+
+### Query Metadata Changes
+
+* The `@security-severity` metadata of `java/log-injection` has been reduced from 7.8 (high) to 6.1 (medium).
+* The `@security-severity` metadata of `java/android/webview-addjavascriptinterface`, `java/android/websettings-javascript-enabled` and `java/xss` has been increased from 6.1 (medium) to 7.8 (high).
+
+## 1.10.11
+
+No user-facing changes.
+
+## 1.10.10
+
+No user-facing changes.
+
+## 1.10.9
+
+No user-facing changes.
+
+## 1.10.8
+
+### Minor Analysis Improvements
+
+* The Java extractor and QL libraries now support Java 26.
+* Java analysis now selects the Java version to use informed by Maven POM files across all project modules. It also tries to use Java 17 or higher for all Maven projects if possible, for improved build compatibility.
+
+## 1.10.7
+
+No user-facing changes.
+
+## 1.10.6
+
+No user-facing changes.
+
+## 1.10.5
+
+### Minor Analysis Improvements
+
+* Added sink models for `com.couchbase` supporting SQL Injection and Hardcoded Credentials queries.
+* Java thread safety analysis now understands initialization to thread safe classes inside constructors.
+
+## 1.10.4
+
+No user-facing changes.
+
+## 1.10.3
+
+### Minor Analysis Improvements
+
+* Java analysis no longer forces `--source` and `--target` compiler flags for Maven builds. This allows Maven to use the project's own compiler configuration, improving build compatibility.
+
+## 1.10.2
+
+No user-facing changes.
+
+## 1.10.1
+
+### Minor Analysis Improvements
+
+* Operations that extract only a fixed-length prefix or suffix of a string (for example, `substring` in Java or `take` in Kotlin), when limited to a length of at most 7 characters, are now treated as sanitizers for the `java/sensitive-log` query.  
+
+## 1.10.0
+
+### Query Metadata Changes
+
+* Reduced the `security-severity` score of the `java/overly-large-range` query from 5.0 to 4.0 to better reflect its impact.
+* Reduced the `security-severity` score of the `java/insecure-cookie` query from 5.0 to 4.0 to better reflect its impact.
+
+## 1.9.0
+
+### New Queries
+
+* The `java/sensitive-cookie-not-httponly` query has been promoted from experimental to the main query pack.
+* Added a new query, `java/escaping`, to detect values escaping from classes marked as `@ThreadSafe`.
+* Added a new query, `java/not-threadsafe`, to detect data races in classes marked as `@ThreadSafe`.
+* Added a new query, `java/safe-publication`, to detect unsafe publication in classes marked as `@ThreadSafe`.
+
+### Minor Analysis Improvements
+
+* Calls to `String.matches` are now treated as sanitizers for the `java/ssrf` query.
+
+## 1.8.2
+
+No user-facing changes.
+
+## 1.8.1
+
+No user-facing changes.
+
+## 1.8.0
+
+### Major Analysis Improvements
+
+* The implementation of `java/dereferenced-value-may-be-null` has been completely replaced with a new general control-flow reachability library. This improves precision by reducing false positives. However, since the entire calculation has been reworked, there can be small corner cases where precision regressions might occur and new false positives may occur, but these cases should be rare.
+
+### Bug Fixes
+
+* The message for `java/diagnostic/database-quality` has been updated to include detailed database health metrics. Additionally, the threshold for reporting database health issues has been lowered from 95% to 85% (if any metric falls below this percentage). These changes are visible on the tool status page.
+
+## 1.7.0
+
+### New Queries
+
+* The query `java/insecure-spring-actuator-config` has been promoted from experimental to the main query pack as `java/spring-boot-exposed-actuators-config`. Its results will now appear by default. This query detects exposure of Spring Boot actuators through configuration files. It was originally submitted as an experimental query [by @luchua-bc](https://github.com/github/codeql/pull/5384).
+
+### Query Metadata Changes
+
+* The tag `maintainability` has been removed from `java/run-finalizers-on-exit` and the tags `quality`, `correctness`, and `performance` have been added.
+* The tag `maintainability` has been removed from `java/garbage-collection` and the tags `quality` and `correctness` have been added.
+
+### Minor Analysis Improvements
+
+* Fixed a bug that was causing false negatives in rare cases in the query `java/dereferenced-value-may-be-null`.
+* Removed the `java/empty-statement` query that was subsumed by the `java/empty-block` query.
+
+## 1.6.3
+
+No user-facing changes.
+
+## 1.6.2
+
+No user-facing changes.
+
+## 1.6.1
+
+### Minor Analysis Improvements
+
+* Java analysis of guards has been switched to use the new and improved shared guards library. This improves precision of a number of queries, in particular `java/dereferenced-value-may-be-null`, which now has fewer false positives, and `java/useless-null-check` and `java/constant-comparison`, which gain additional true positives.
+
 ## 1.6.0
 
 ### Query Metadata Changes

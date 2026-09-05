@@ -35,12 +35,13 @@ class Location = JS::Location;
  * Type names have form `package.type` or just `package` if referring to the package export
  * object. If `package` contains a `.` character it must be enclosed in single quotes, such as `'package'.type`.
  *
- * A type name of form `(package)` may also be used when refering to the package export object.
+ * A type name of form `(package)` may also be used when referring to the package export object.
  * We allow this syntax as an alternative to the above, so models generated based on `EndpointNaming` look more consistent.
  * However, access paths are deliberately not parsed here, as we can not handle aliasing at this stage.
  * The model generator must explicitly generate the step between `(package)` and `(package).foo`, for example.
  */
 bindingset[rawType]
+overlay[caller?]
 predicate parseTypeString(string rawType, string package, string qualifiedName) {
   exists(string regexp |
     regexp = "('[^']+'|[^.]+)(.*)" and
@@ -52,33 +53,48 @@ predicate parseTypeString(string rawType, string package, string qualifiedName) 
   qualifiedName = ""
 }
 
+/** If `type` has the form `file:<path>` gets the path to the file. */
+bindingset[type]
+overlay[caller]
+private string getRawFilePathFromTypeName(string type) {
+  result = type.regexpCapture("file:(.*)", 1)
+}
+
 /**
  * Holds if models describing `package` may be relevant for the analysis of this database.
  */
+overlay[local?]
 predicate isPackageUsed(string package) {
   package = "global"
   or
-  package = any(JS::Import imp).getImportedPathString()
+  // To simplify which dependencies are needed to construct DataFlow::Node, we don't want to rely on `Import` here.
+  // Just check all string literals.
+  package = any(JS::Expr imp).getStringValue()
   or
-  any(JS::TypeAnnotation t).hasUnderlyingType(package, _)
+  package = any(JS::StringLiteralTypeExpr t).getValue() // Can be used in `import("foo")`
   or
   exists(JS::PackageJson json | json.getPackageName() = package)
 }
 
 bindingset[type]
+overlay[local?]
 predicate isTypeUsed(string type) {
   exists(string package |
     parseTypeString(type, package, _) and
     isPackageUsed(package)
   )
+  or
+  exists(getRawFilePathFromTypeName(type)) // No need to prune repository-specific models
 }
 
 /**
  * Holds if `type` can be obtained from an instance of `otherType` due to
  * language semantics modeled by `getExtraNodeFromType`.
  */
+overlay[local?]
 predicate hasImplicitTypeModel(string type, string otherType) { none() }
 
+overlay[local?]
 pragma[nomagic]
 private predicate parseRelevantTypeString(string rawType, string package, string qualifiedName) {
   isRelevantFullPath(rawType, _) and
@@ -86,6 +102,7 @@ private predicate parseRelevantTypeString(string rawType, string package, string
 }
 
 /** Holds if `global` is a global variable referenced via a the `global` package in a CSV row. */
+overlay[local]
 private predicate isRelevantGlobal(string global) {
   exists(AccessPath path, AccessPathToken token |
     isRelevantFullPath("global", path) and
@@ -96,6 +113,7 @@ private predicate isRelevantGlobal(string global) {
 }
 
 /** An API graph entry point for global variables mentioned in a model. */
+overlay[local?]
 private class GlobalApiEntryPoint extends API::EntryPoint {
   string global;
 
@@ -115,6 +133,41 @@ private class GlobalApiEntryPoint extends API::EntryPoint {
  */
 private API::Node getGlobalNode(string globalName) {
   result = any(GlobalApiEntryPoint e | e.getGlobal() = globalName).getANode()
+}
+
+/** Holds if `type` is used as a type string in a model, and has the form `file:<filePath>` */
+overlay[local]
+private predicate relevantRawFilePath(string type, string filePath) {
+  isRelevantType(type) and
+  filePath = getRawFilePathFromTypeName(type)
+}
+
+/** An API graph entry point for package specifiers of form `file:<path>`. */
+overlay[local?]
+private class RawFilePathEntryPoint extends API::EntryPoint {
+  string path;
+
+  RawFilePathEntryPoint() {
+    relevantRawFilePath(_, path) and
+    this = "RawFilePathEntryPoint:" + path
+  }
+
+  override DataFlow::SourceNode getASource() {
+    exists(JS::Import imprt |
+      imprt.getImportedFile().getRelativePath() = path and
+      result = imprt.getImportedModuleNode()
+    )
+  }
+
+  /** Gets the file path being referenced. */
+  string getPath() { result = path }
+}
+
+/**
+ * Gets an API node referring to the given file path (if relevant).
+ */
+private API::Node getRawFilePathNode(string rawFilePathNode) {
+  result = any(RawFilePathEntryPoint e | e.getPath() = rawFilePathNode).getANode()
 }
 
 /** Gets a JavaScript-specific interpretation of the `(type, path)` tuple after resolving the first `n` access path tokens. */
@@ -140,6 +193,11 @@ API::Node getExtraNodeFromType(string type) {
     or
     // Access instance of a type based on type annotations
     result = API::Internal::getANodeOfTypeRaw(package, qualifiedName)
+  )
+  or
+  exists(string filePath |
+    relevantRawFilePath(type, filePath) and
+    result = getRawFilePathNode(filePath)
   )
 }
 
@@ -188,6 +246,7 @@ API::Node getExtraSuccessorFromNode(API::Node node, AccessPathTokenBase token) {
 }
 
 bindingset[node]
+overlay[caller?]
 pragma[inline_late]
 private API::Node getAGuardedRouteHandlerApprox(API::Node node) {
   // For now just get any routing node with the same root (i.e. the same web app), as
@@ -228,6 +287,7 @@ private predicate blockFuzzyCall(DataFlow::CallNode call) {
   isCommonBuiltinMethodName(call.getCalleeName())
 }
 
+overlay[caller?]
 pragma[inline]
 API::Node getAFuzzySuccessor(API::Node node) {
   result = node.getAMember() and

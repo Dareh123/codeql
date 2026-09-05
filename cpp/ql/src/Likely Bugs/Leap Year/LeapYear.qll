@@ -128,9 +128,16 @@ abstract class LeapYearFieldAccess extends YearFieldAccess {
   /**
    * Holds if the top-level binary operation includes an addition or subtraction operator with an operand specified by `valueToCheck`.
    */
-  predicate additionalAdditionOrSubstractionCheckForLeapYear(int valueToCheck) {
+  predicate additionalAdditionOrSubtractionCheckForLeapYear(int valueToCheck) {
     additionalLogicalCheck(this, "+", valueToCheck) or
     additionalLogicalCheck(this, "-", valueToCheck)
+  }
+
+  /**
+   * DEPRECATED: Use `additionalAdditionOrSubtractionCheckForLeapYear` instead.
+   */
+  deprecated predicate additionalAdditionOrSubstractionCheckForLeapYear(int valueToCheck) {
+    this.additionalAdditionOrSubtractionCheckForLeapYear(valueToCheck)
   }
 
   /**
@@ -180,13 +187,13 @@ class StructTmLeapYearFieldAccess extends LeapYearFieldAccess {
     this.additionalModulusCheckForLeapYear(100) and
     // tm_year represents years since 1900
     (
-      this.additionalAdditionOrSubstractionCheckForLeapYear(1900)
+      this.additionalAdditionOrSubtractionCheckForLeapYear(1900)
       or
       // some systems may use 2000 for 2-digit year conversions
-      this.additionalAdditionOrSubstractionCheckForLeapYear(2000)
+      this.additionalAdditionOrSubtractionCheckForLeapYear(2000)
       or
       // converting from/to Unix epoch
-      this.additionalAdditionOrSubstractionCheckForLeapYear(1970)
+      this.additionalAdditionOrSubtractionCheckForLeapYear(1970)
     )
   }
 }
@@ -214,6 +221,10 @@ private module LeapYearCheckConfig implements DataFlow::ConfigSig {
 
   predicate isSink(DataFlow::Node sink) {
     exists(ChecksForLeapYearFunctionCall fc | sink.asExpr() = fc.getAnArgument())
+  }
+
+  predicate observeDiffInformedIncrementalMode() {
+    none() // only used negatively in UncheckedLeapYearAfterYearModification.ql
   }
 }
 
@@ -285,7 +296,49 @@ private module PossibleYearArithmeticOperationCheckConfig implements DataFlow::C
       aexpr.getLValue() = fa
     )
   }
+
+  predicate observeDiffInformedIncrementalMode() { any() }
+
+  Location getASelectedSourceLocation(DataFlow::Node source) {
+    result = source.asExpr().getLocation()
+  }
+
+  Location getASelectedSinkLocation(DataFlow::Node sink) { result = sink.asExpr().getLocation() }
 }
 
 module PossibleYearArithmeticOperationCheckFlow =
   TaintTracking::Global<PossibleYearArithmeticOperationCheckConfig>;
+
+/**
+ * A time conversion function where either
+ * 1) an incorrect leap year date would result in an error that can be checked from the return value or
+ * 2) an incorrect leap year date is auto corrected (no checks required)
+ */
+class TimeConversionFunction extends Function {
+  boolean autoLeapYearCorrecting;
+
+  TimeConversionFunction() {
+    autoLeapYearCorrecting = false and
+    (
+      this.getName() =
+        [
+          "FileTimeToSystemTime", "SystemTimeToFileTime", "SystemTimeToTzSpecificLocalTime",
+          "SystemTimeToTzSpecificLocalTimeEx", "TzSpecificLocalTimeToSystemTime",
+          "TzSpecificLocalTimeToSystemTimeEx", "RtlLocalTimeToSystemTime",
+          "RtlTimeToSecondsSince1970", "_mkgmtime", "SetSystemTime", "VarUdateFromDate", "from_tm"
+        ]
+      or
+      // Matches all forms of GetDateFormat, e.g. GetDateFormatA/W/Ex
+      this.getName().matches("GetDateFormat%")
+    )
+    or
+    autoLeapYearCorrecting = true and
+    this.getName() =
+      ["mktime", "_mktime32", "_mktime64", "SystemTimeToVariantTime", "VariantTimeToSystemTime"]
+  }
+
+  /**
+   * Holds if the function is expected to auto convert a bad leap year date.
+   */
+  predicate isAutoLeapYearCorrecting() { autoLeapYearCorrecting = true }
+}

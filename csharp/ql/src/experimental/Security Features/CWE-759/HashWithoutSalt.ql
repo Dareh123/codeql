@@ -10,6 +10,7 @@
  */
 
 import csharp
+import semmle.code.csharp.frameworks.system.Collections
 import HashWithoutSalt::PathGraph
 
 /** The C# class `Windows.Security.Cryptography.Core.HashAlgorithmProvider`. */
@@ -93,12 +94,17 @@ predicate hasAnotherHashCall(MethodCall mc) {
 
 /** Holds if a password hash without salt is further processed in another method call. */
 predicate hasFurtherProcessing(MethodCall mc) {
-  mc.getTarget().fromLibrary() and
-  (
-    mc.getTarget().hasFullyQualifiedName("System", "Array", "Copy") or // Array.Copy(passwordHash, 0, password.Length), 0, key, 0, keyLen);
-    mc.getTarget().hasFullyQualifiedName("System", "String", "Concat") or // string.Concat(passwordHash, saltkey)
-    mc.getTarget().hasFullyQualifiedName("System", "Buffer", "BlockCopy") or // Buffer.BlockCopy(passwordHash, 0, allBytes, 0, 20)
-    mc.getTarget().hasFullyQualifiedName("System", "String", "Format") // String.Format("{0}:{1}:{2}", username, salt, password)
+  exists(Method m | m = mc.getTarget() and m.fromLibrary() |
+    m.hasFullyQualifiedName("System", "Array", "Copy") // Array.Copy(passwordHash, 0, password.Length), 0, key, 0, keyLen);
+    or
+    m.hasFullyQualifiedName("System", "String", "Concat") // string.Concat(passwordHash, saltkey)
+    or
+    m.hasFullyQualifiedName("System", "Buffer", "BlockCopy") // Buffer.BlockCopy(passwordHash, 0, allBytes, 0, 20)
+    or
+    m.hasFullyQualifiedName("System", "String", "Format") // String.Format("{0}:{1}:{2}", username, salt, password)
+    or
+    m.getName() = "CopyTo" and
+    m.getDeclaringType().getABaseType*() instanceof SystemCollectionsICollectionInterface // passBytes.CopyTo(rawSalted, 0);
   )
 }
 
@@ -168,7 +174,7 @@ module HashWithoutSaltConfig implements DataFlow::ConfigSig {
       mc.getAnArgument() = node.asExpr()
     )
     or
-    exists(AddExpr e | node.asExpr() = e.getAnOperand()) // password+salt
+    exists(AddOperation e | node.asExpr() = e.getAnOperand()) // password+salt
     or
     exists(InterpolatedStringExpr e | node.asExpr() = e.getAnInsert())
     or
@@ -181,10 +187,10 @@ module HashWithoutSaltConfig implements DataFlow::ConfigSig {
     or
     // a salt or key is included in subclasses of `KeyedHashAlgorithm`
     exists(MethodCall mc, Assignment a, ObjectCreation oc |
-      a.getRValue() = oc and
+      a.getRightOperand() = oc and
       oc.getObjectType().getABaseType+() instanceof KeyedHashAlgorithm and
       mc.getTarget() instanceof HashMethod and
-      a.getLValue() = mc.getQualifier().(VariableAccess).getTarget().getAnAccess() and
+      a.getLeftOperand() = mc.getQualifier().(VariableAccess).getTarget().getAnAccess() and
       mc.getArgument(0) = node.asExpr()
     )
   }

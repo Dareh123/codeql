@@ -1,6 +1,8 @@
 /**
  * Provides classes and predicates for working with the MyBatis framework.
  */
+overlay[local?]
+module;
 
 import java
 private import semmle.code.java.dataflow.DataFlow
@@ -107,7 +109,7 @@ class MyBatisInjectionSink extends DataFlow::Node {
       a.getType() instanceof MyBatisProvider and
       m.getDeclaringType() = a.getValue(["type", "value"]).(TypeLiteral).getTypeName().getType() and
       m.hasName(a.getValue("method").(StringLiteral).getValue()) and
-      exists(ReturnStmt ret | this.asExpr() = ret.getResult() and ret.getEnclosingCallable() = m)
+      exists(ReturnStmt ret | this.asExpr() = ret.getExpr() and ret.getEnclosingCallable() = m)
     )
   }
 }

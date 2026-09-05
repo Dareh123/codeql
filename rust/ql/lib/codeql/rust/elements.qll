@@ -6,7 +6,6 @@
 import codeql.files.FileSystem
 import codeql.rust.elements.Abi
 import codeql.rust.elements.Addressable
-import codeql.rust.elements.Adt
 import codeql.rust.elements.ArgList
 import codeql.rust.elements.ArrayExpr
 import codeql.rust.elements.ArrayListExpr
@@ -38,10 +37,13 @@ import codeql.rust.elements.BlockExpr
 import codeql.rust.elements.BoxPat
 import codeql.rust.elements.BreakExpr
 import codeql.rust.elements.CallExpr
-import codeql.rust.elements.CallExprBase
 import codeql.rust.elements.Callable
 import codeql.rust.elements.CastExpr
-import codeql.rust.elements.ClosureBinder
+import codeql.rust.elements.CfgAtom
+import codeql.rust.elements.CfgAttrMeta
+import codeql.rust.elements.CfgComposite
+import codeql.rust.elements.CfgMeta
+import codeql.rust.elements.CfgPredicate
 import codeql.rust.elements.ClosureExpr
 import codeql.rust.elements.Comment
 import codeql.rust.elements.Const
@@ -62,10 +64,12 @@ import codeql.rust.elements.ExternItemList
 import codeql.rust.elements.FieldExpr
 import codeql.rust.elements.FieldList
 import codeql.rust.elements.FnPtrTypeRepr
+import codeql.rust.elements.ForBinder
 import codeql.rust.elements.ForExpr
 import codeql.rust.elements.ForTypeRepr
 import codeql.rust.elements.Format
 import codeql.rust.elements.FormatArgsArg
+import codeql.rust.elements.FormatArgsArgName
 import codeql.rust.elements.FormatArgsExpr
 import codeql.rust.elements.FormatArgument
 import codeql.rust.elements.FormatTemplateVariableAccess
@@ -82,6 +86,7 @@ import codeql.rust.elements.IndexExpr
 import codeql.rust.elements.InferTypeRepr
 import codeql.rust.elements.Item
 import codeql.rust.elements.ItemList
+import codeql.rust.elements.KeyValueMeta
 import codeql.rust.elements.Label
 import codeql.rust.elements.LabelableExpr
 import codeql.rust.elements.LetElse
@@ -95,7 +100,6 @@ import codeql.rust.elements.LiteralPat
 import codeql.rust.elements.Locatable
 import codeql.rust.elements.LoopExpr
 import codeql.rust.elements.LoopingExpr
-import codeql.rust.elements.MacroBlockExpr
 import codeql.rust.elements.MacroCall
 import codeql.rust.elements.MacroDef
 import codeql.rust.elements.MacroExpr
@@ -128,6 +132,7 @@ import codeql.rust.elements.Path
 import codeql.rust.elements.PathAstNode
 import codeql.rust.elements.PathExpr
 import codeql.rust.elements.PathExprBase
+import codeql.rust.elements.PathMeta
 import codeql.rust.elements.PathPat
 import codeql.rust.elements.PathSegment
 import codeql.rust.elements.PathTypeRepr
@@ -139,7 +144,6 @@ import codeql.rust.elements.RefExpr
 import codeql.rust.elements.RefPat
 import codeql.rust.elements.RefTypeRepr
 import codeql.rust.elements.Rename
-import codeql.rust.elements.Resolvable
 import codeql.rust.elements.RestPat
 import codeql.rust.elements.RetTypeRepr
 import codeql.rust.elements.ReturnExpr
@@ -162,8 +166,9 @@ import codeql.rust.elements.StructPatField
 import codeql.rust.elements.StructPatFieldList
 import codeql.rust.elements.Token
 import codeql.rust.elements.TokenTree
+import codeql.rust.elements.TokenTreeMeta
 import codeql.rust.elements.Trait
-import codeql.rust.elements.TraitAlias
+import codeql.rust.elements.TryBlockModifier
 import codeql.rust.elements.TryExpr
 import codeql.rust.elements.TupleExpr
 import codeql.rust.elements.TupleField
@@ -175,12 +180,14 @@ import codeql.rust.elements.TypeAlias
 import codeql.rust.elements.TypeArg
 import codeql.rust.elements.TypeBound
 import codeql.rust.elements.TypeBoundList
+import codeql.rust.elements.TypeItem
 import codeql.rust.elements.TypeParam
 import codeql.rust.elements.TypeRepr
 import codeql.rust.elements.UnderscoreExpr
 import codeql.rust.elements.Unextracted
 import codeql.rust.elements.Unimplemented
 import codeql.rust.elements.Union
+import codeql.rust.elements.UnsafeMeta
 import codeql.rust.elements.Use
 import codeql.rust.elements.UseBoundGenericArg
 import codeql.rust.elements.UseBoundGenericArgs

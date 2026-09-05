@@ -1,6 +1,8 @@
 /**
  * Basic definitions for use in the data flow library.
  */
+overlay[local?]
+module;
 
 private import java
 private import DataFlowPrivate
@@ -77,15 +79,18 @@ private module ThisFlow {
  * Holds if data can flow from `node1` to `node2` in zero or more
  * local (intra-procedural) steps.
  */
+overlay[caller?]
 pragma[inline]
 predicate localFlow(Node node1, Node node2) { node1 = node2 or localFlowStepPlus(node1, node2) }
 
+overlay[caller?]
 private predicate localFlowStepPlus(Node node1, Node node2) = fastTC(localFlowStep/2)(node1, node2)
 
 /**
  * Holds if data can flow from `e1` to `e2` in zero or more
  * local (intra-procedural) steps.
  */
+overlay[caller?]
 pragma[inline]
 predicate localExprFlow(Expr e1, Expr e2) { localFlow(exprNode(e1), exprNode(e2)) }
 
@@ -94,11 +99,12 @@ predicate localExprFlow(Expr e1, Expr e2) { localFlow(exprNode(e1), exprNode(e2)
  * updates.
  */
 predicate hasNonlocalValue(FieldRead fr) {
-  not exists(SsaVariable v | v.getAUse() = fr)
+  not exists(SsaDefinition v | v.getARead() = fr)
   or
-  exists(SsaVariable v, SsaVariable def | v.getAUse() = fr and def = v.getAnUltimateDefinition() |
-    def instanceof SsaImplicitInit or
-    def instanceof SsaImplicitUpdate
+  exists(SsaDefinition v, SsaDefinition def |
+    v.getARead() = fr and
+    def = v.getAnUltimateDefinition() and
+    def instanceof SsaImplicitWrite
   )
 }
 
@@ -195,7 +201,7 @@ predicate simpleAstFlowStep(Expr e1, Expr e2) {
   or
   e2 = any(StmtExpr stmtExpr | e1 = stmtExpr.getResultExpr())
   or
-  e2 = any(NotNullExpr nne | e1 = nne.getExpr())
+  e2 = any(NotNullExpr nne | e1 = nne.getOperand())
   or
   e2.(WhenExpr).getBranch(_).getAResult() = e1
   or
@@ -241,8 +247,7 @@ private predicate simpleLocalFlowStep0(Node node1, Node node2, string model) {
   or
   cloneStep(node1, node2) and model = "CloneStep"
   or
-  FlowSummaryImpl::Private::Steps::summaryLocalStep(node1.(FlowSummaryNode).getSummaryNode(),
-    node2.(FlowSummaryNode).getSummaryNode(), true, model)
+  FlowSummaryImpl::Private::Steps::summaryLocalStep(node1, node2, true, model)
 }
 
 /**
@@ -259,8 +264,8 @@ class Content extends TContent {
 
   /**
    * Holds if this element is at the specified location.
-   * The location spans column `startcolumn` of line `startline` to
-   * column `endcolumn` of line `endline` in file `filepath`.
+   * The location spans column `sc` of line `sl` to
+   * column `ec` of line `el` in file `path`.
    * For more information, see
    * [Locations](https://codeql.github.com/docs/writing-codeql-queries/providing-locations-in-codeql-queries/).
    */
@@ -358,13 +363,36 @@ class ContentSet instanceof Content {
 
   /**
    * Holds if this element is at the specified location.
-   * The location spans column `startcolumn` of line `startline` to
-   * column `endcolumn` of line `endline` in file `filepath`.
+   * The location spans column `sc` of line `sl` to
+   * column `ec` of line `el` in file `path`.
    * For more information, see
    * [Locations](https://codeql.github.com/docs/writing-codeql-queries/providing-locations-in-codeql-queries/).
    */
   predicate hasLocationInfo(string path, int sl, int sc, int el, int ec) {
     super.hasLocationInfo(path, sl, sc, el, ec)
+  }
+}
+
+/**
+ * Holds if the guard `g` validates the expression `e` upon evaluating to `gv`.
+ *
+ * The expression `e` is expected to be a syntactic part of the guard `g`.
+ * For example, the guard `g` might be a call `isSafe(x)` and the expression `e`
+ * the argument `x`.
+ */
+signature predicate valueGuardChecksSig(Guard g, Expr e, GuardValue gv);
+
+/**
+ * Provides a set of barrier nodes for a guard that validates an expression.
+ *
+ * This is expected to be used in `isBarrier`/`isSanitizer` definitions
+ * in data flow and taint tracking.
+ */
+module BarrierGuardValue<valueGuardChecksSig/3 guardChecks> {
+  /** Gets a node that is safely guarded by the given guard check. */
+  Node getABarrierNode() {
+    SsaFlow::asNode(result) =
+      SsaImpl::DataFlowIntegration::BarrierGuard<guardChecks/3>::getABarrierNode()
   }
 }
 
@@ -384,9 +412,48 @@ signature predicate guardChecksSig(Guard g, Expr e, boolean branch);
  * in data flow and taint tracking.
  */
 module BarrierGuard<guardChecksSig/3 guardChecks> {
+  private predicate guardChecks0(Guard g, Expr e, GuardValue gv) {
+    guardChecks(g, e, gv.asBooleanValue())
+  }
+
   /** Gets a node that is safely guarded by the given guard check. */
   Node getABarrierNode() {
+    result = BarrierGuardValue<guardChecks0/3>::getABarrierNode()
+    or
+    // An annotation doesn't dominate the expression it constrains, so the
+    // barrier-guard machinery above never yields a node for it; treat it as a
+    // direct barrier instead. Annotations are always present, so we only
+    // consider the `true` branch.
+    exists(Guard g, Expr e |
+      g instanceof Annotation and guardChecks(g, e, true) and result.asExpr() = e
+    )
+  }
+}
+
+bindingset[this]
+private signature class ParamSig;
+
+private module WithParam<ParamSig P> {
+  /**
+   * Holds if the guard `g` validates the expression `e` upon evaluating to `gv`.
+   *
+   * The expression `e` is expected to be a syntactic part of the guard `g`.
+   * For example, the guard `g` might be a call `isSafe(x)` and the expression `e`
+   * the argument `x`.
+   */
+  signature predicate guardChecksSig(Guard g, Expr e, GuardValue gv, P param);
+}
+
+/**
+ * Provides a set of barrier nodes for a guard that validates an expression.
+ *
+ * This is expected to be used in `isBarrier`/`isSanitizer` definitions
+ * in data flow and taint tracking.
+ */
+module ParameterizedBarrierGuard<ParamSig P, WithParam<P>::guardChecksSig/4 guardChecks> {
+  /** Gets a node that is safely guarded by the given guard check. */
+  Node getABarrierNode(P param) {
     SsaFlow::asNode(result) =
-      SsaImpl::DataFlowIntegration::BarrierGuard<guardChecks/3>::getABarrierNode()
+      SsaImpl::DataFlowIntegration::ParameterizedBarrierGuard<P, guardChecks/4>::getABarrierNode(param)
   }
 }

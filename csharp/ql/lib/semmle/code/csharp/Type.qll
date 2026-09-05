@@ -17,7 +17,8 @@ private import semmle.code.csharp.frameworks.system.runtime.CompilerServices
  *
  * Either a value or reference type (`ValueOrRefType`), the `void` type (`VoidType`),
  * a pointer type (`PointerType`), the arglist type (`ArglistType`), an unknown
- * type (`UnknownType`), or a type parameter (`TypeParameter`).
+ * type (`UnknownType`), a type parameter (`TypeParameter`) or
+ * an extension type (`ExtensionType`).
  */
 class Type extends Member, TypeContainer, @type {
   /** Gets the name of this type without additional syntax such as `[]` or `*`. */
@@ -138,6 +139,9 @@ class ValueOrRefType extends Type, Attributable, @value_or_ref_type {
   /** Gets an immediate subtype of this type, if any. */
   ValueOrRefType getASubType() { result.getABaseType() = this }
 
+  /** Gets an immediate supertype of this type, if any. */
+  ValueOrRefType getASuperType() { this.getABaseType() = result }
+
   /** Gets a member of this type, if any. */
   Member getAMember() { result.getDeclaringType() = this }
 
@@ -198,7 +202,7 @@ class ValueOrRefType extends Type, Attributable, @value_or_ref_type {
    */
   pragma[inline]
   predicate hasCallable(Callable c) {
-    this.hasMethod(c)
+    this.hasMember(c)
     or
     this.hasMember(c.(Accessor).getDeclaration())
   }
@@ -391,6 +395,8 @@ class NestedType extends ValueOrRefType {
   NestedType() { nested_types(this, _, _) }
 
   override ValueOrRefType getDeclaringType() { nested_types(this, result, _) }
+
+  override Location getALocation() { type_location(this.getUnboundDeclaration(), result) }
 }
 
 /**
@@ -1320,4 +1326,37 @@ class TypeMention extends @type_mention {
 
   /** Gets the location of this type mention. */
   Location getLocation() { type_mention_location(this, result) }
+}
+
+/**
+ * A type extension declaration, for example `extension(string s) { ... }` in
+ *
+ * ```csharp
+ * static class MyExtensions {
+ *   extension(string s) { ... }
+ * }
+ * ```
+ */
+class ExtensionType extends Parameterizable, @extension_type {
+  /**
+   * Gets the receiver parameter of this extension type, if any.
+   */
+  Parameter getReceiverParameter() { result = this.getParameter(0) }
+
+  /**
+   * Holds if this extension type has a receiver parameter.
+   */
+  predicate hasReceiverParameter() { exists(this.getReceiverParameter()) }
+
+  /**
+   * Gets the type being extended by this extension type.
+   */
+  Type getExtendedType() {
+    extension_receiver_type(this, result)
+    or
+    not extension_receiver_type(this, any(Type t)) and
+    extension_receiver_type(this, getTypeRef(result))
+  }
+
+  override string getAPrimaryQlClass() { result = "ExtensionType" }
 }

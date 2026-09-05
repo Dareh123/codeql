@@ -12,7 +12,7 @@ class Test {
 	MyLock mylock = new MyLock();
 
 	void bad1() {
-		mylock.lock();
+		mylock.lock(); // $ Alert
 		f();
 		mylock.unlock();
 	}
@@ -27,7 +27,7 @@ class Test {
 	}
 
 	void bad3() {
-		mylock.lock();
+		mylock.lock(); // $ Alert
 		f();
 		try {
 			g();
@@ -37,7 +37,7 @@ class Test {
 	}
 
 	void bad4() {
-		mylock.lock();
+		mylock.lock(); // $ Alert
 		try {
 			f();
 		} finally {
@@ -47,7 +47,7 @@ class Test {
 	}
 
 	void bad5(boolean lockmore) {
-		mylock.lock();
+		mylock.lock(); // $ Alert
 		try {
 			f();
 			if (lockmore) {
@@ -69,7 +69,7 @@ class Test {
 	}
 
 	void bad7() {
-		if (!mylock.tryLock()) { return; }
+		if (!mylock.tryLock()) { return; } // $ Alert
 		f();
 		mylock.unlock();
 	}
@@ -111,7 +111,7 @@ class Test {
 	void bad10() {
 		boolean locked = false;
 		try {
-			locked = mylock.tryLock();
+			locked = mylock.tryLock(); // $ Alert
 			if (!locked) { return; }
 		} finally {
 			if (locked) {
@@ -119,5 +119,17 @@ class Test {
 				mylock.unlock();
 			}
 		}
+	}
+
+	static class TestPool {
+		void lock() {}
+		void unlock() {}
+	}
+
+	void good11() {
+		TestPool pool = new TestPool();
+		pool.lock(); // Should be excluded because of "Pool" suffix
+		f();
+		pool.unlock();
 	}
 }

@@ -20,12 +20,22 @@ module Impl {
    * ```rust
    * let first = Foo { a: 1, b: 2 };
    * let second = Foo { a: 2, ..first };
-   * Foo { a: 1, b: 2 }[2] = 10;
-   * Foo { .. } = second;
+   * let n = Foo { a: 1, b: 2 }.b;
+   * Foo { a: m, .. } = second;
    * ```
    */
   class StructExpr extends Generated::StructExpr {
     override string toStringImpl() { result = this.getPath().toStringImpl() + " {...}" }
+
+    private PathResolution::ItemNode getResolvedPath() {
+      result = PathResolution::resolvePath(this.getPath())
+    }
+
+    /** Gets the struct that is instantiated, if any. */
+    Struct getStruct() { result = this.getResolvedPath() }
+
+    /** Gets the variant that is instantiated, if any. */
+    Variant getVariant() { result = this.getResolvedPath() }
 
     /** Gets the record expression for the field `name`. */
     pragma[nomagic]
@@ -34,19 +44,16 @@ module Impl {
       name = result.getFieldName()
     }
 
-    pragma[nomagic]
-    private PathResolution::ItemNode getResolvedPath(string name) {
-      result = PathResolution::resolvePath(this.getPath()) and
-      exists(this.getFieldExpr(name))
+    /** Gets the record field named `name` of the instantiated struct or variant. */
+    StructField getStructField(string name) {
+      result = this.getStruct().getStructField(name)
+      or
+      result = this.getVariant().getStructField(name)
     }
 
-    /** Gets the record field that matches the `name` field of this record expression. */
-    pragma[nomagic]
-    StructField getStructField(string name) {
-      exists(PathResolution::ItemNode i | i = this.getResolvedPath(name) |
-        result.isStructField(i, name) or
-        result.isVariantField(i, name)
-      )
+    /** Gets the `i`th struct field of the instantiated struct or variant. */
+    StructField getNthStructField(int i) {
+      result = [this.getStruct().getNthStructField(i), this.getVariant().getNthStructField(i)]
     }
   }
 }

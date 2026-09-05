@@ -47,7 +47,7 @@ import semmle.javascript.NodeJS
 import semmle.javascript.NPM
 import semmle.javascript.Paths
 import semmle.javascript.Promises
-import semmle.javascript.CanonicalNames
+deprecated import semmle.javascript.CanonicalNames
 import semmle.javascript.RangeAnalysis
 import semmle.javascript.Regexp
 import semmle.javascript.Routing
@@ -134,6 +134,7 @@ import semmle.javascript.frameworks.TorrentLibraries
 import semmle.javascript.frameworks.Typeahead
 import semmle.javascript.frameworks.TrustedTypes
 import semmle.javascript.frameworks.UriLibraries
+import semmle.javascript.frameworks.VercelNode
 import semmle.javascript.frameworks.Vue
 import semmle.javascript.frameworks.Vuex
 import semmle.javascript.frameworks.Webix
@@ -146,3 +147,4 @@ import semmle.javascript.linters.JSLint
 import semmle.javascript.linters.Linting
 import semmle.javascript.security.dataflow.RemoteFlowSources
 import semmle.javascript.frameworks.UnderscoreDotString
+private import semmle.javascript.internal.Overlay

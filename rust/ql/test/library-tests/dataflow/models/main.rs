@@ -2,8 +2,8 @@ fn source(i: i64) -> i64 {
     1000 + i
 }
 
-fn sink(s: i64) {
-    println!("{}", s);
+fn sink<T: std::fmt::Debug>(s: T) {
+    println!("{:?}", s);
 }
 
 // has a flow model
@@ -29,6 +29,20 @@ fn test_coerce() {
 enum MyPosEnum {
     A(i64),
     B(i64),
+}
+
+// has a manual flow model with flow from second argument to the return value
+// and a wrong generated model with flow from first argument to the return value
+fn snd(a: i64, b: i64) -> i64 {
+    0
+}
+
+fn test_snd() {
+    let s1 = source(99);
+    sink(snd(0, s1)); // $ hasValueFlow=99
+
+    let s2 = source(88);
+    sink(snd(s2, 0));
 }
 
 // has a flow model
@@ -61,6 +75,7 @@ fn test_set_var_pos() {
 enum MyFieldEnum {
     C { field_c: i64 },
     D { field_d: i64 },
+    E { field_e: Option<i64> },
 }
 
 // has a flow model
@@ -87,6 +102,7 @@ fn test_set_var_field() {
     match e1 {
         MyFieldEnum::C { field_c: i } => sink(i),
         MyFieldEnum::D { field_d: i } => sink(i), // $ hasValueFlow=5
+        MyFieldEnum::E { field_e: o } => (),
     }
 }
 
@@ -176,7 +192,10 @@ fn test_set_tuple_element() {
 }
 
 // has a flow model
-pub fn apply<F>(n: i64, f: F) -> i64 where F : FnOnce(i64) -> i64 {
+pub fn apply<F>(n: i64, f: F) -> i64
+where
+    F: FnOnce(i64) -> i64,
+{
     0
 }
 
@@ -229,11 +248,29 @@ fn enum_source(i: i64) -> MyFieldEnum {
     MyFieldEnum::C { field_c: 0 }
 }
 
+// has a source model
+fn enum_source_nested(i: i64) -> MyFieldEnum {
+    MyFieldEnum::C { field_c: 0 }
+}
+
 fn test_enum_source() {
     let s = enum_source(12);
     match s {
         MyFieldEnum::C { field_c: i } => sink(i),
         MyFieldEnum::D { field_d: i } => sink(i), // $ hasValueFlow=12
+        MyFieldEnum::E { field_e: o } => (),
+    }
+
+    let s = enum_source_nested(13);
+    match s {
+        MyFieldEnum::C { field_c: i } => sink(i),
+        MyFieldEnum::D { field_d: i } => sink(i),
+        MyFieldEnum::E { field_e: o } => {
+            match o {
+                Some(i) => sink(i), // $ hasValueFlow=13
+                None => (),
+            }
+        }
     }
 }
 
@@ -243,16 +280,92 @@ fn test_enum_method_source() {
     match s {
         MyFieldEnum::C { field_c: i } => sink(i), // $ hasValueFlow=13
         MyFieldEnum::D { field_d: i } => sink(i),
+        MyFieldEnum::E { field_e: o } => (),
+    }
+}
+
+mod source_into_function {
+    use super::sink;
+    use crate::MyFieldEnum;
+
+    // has a source model
+    fn pass_source<A>(_i: i64, f: impl FnOnce(i64) -> A) -> A {
+        f(42)
+    }
+
+    // has a source model
+    fn pass_source_nested(_i: i64, f: impl FnOnce(MyFieldEnum) -> ()) {
+        f(MyFieldEnum::C { field_c: 0 })
+    }
+
+    fn test_source_into_function() {
+        let a = |a| sink(a); // $ hasValueFlow=1
+        pass_source(1, a);
+
+        pass_source(2, |a| {
+            sink(a); // $ hasValueFlow=2
+        });
+
+        fn f(a: i64) {
+            sink(a) // $ hasValueFlow=3
+        }
+        pass_source(3, f);
+
+        pass_source(4, async move |a| {
+            sink(a); // $ hasValueFlow=4
+        });
+
+        pass_source_nested(5, |e| {
+            match e {
+                MyFieldEnum::C { field_c: i } => sink(i),
+                MyFieldEnum::D { field_d: i } => sink(i),
+                MyFieldEnum::E { field_e: o } => {
+                    match o {
+                        Some(i) => sink(i), // $ hasValueFlow=5
+                        None => (),
+                    }
+                }
+            }
+        });
+    }
+}
+
+mod sink_out_of_function {
+    use super::source;
+    use crate::MyFieldEnum;
+
+    // has a sink model
+    fn pass_sink(f: impl FnOnce(()) -> i64) {}
+
+    // has a sink model
+    fn pass_sink_nested(f: impl FnOnce(()) -> MyFieldEnum) {}
+
+    fn test_sink_out_of_function() {
+        let a = |a| source(1);
+        pass_sink(a); // $ hasValueFlow=1
+
+        let b = |_a| {
+            let s = source(2);
+            MyFieldEnum::E {
+                field_e: Option::Some(s),
+            }
+        };
+        pass_sink_nested(b); // $ hasValueFlow=2
     }
 }
 
 // has a sink model
 fn enum_sink(e: MyFieldEnum) {}
 
+// has a sink model
+fn enum_sink_nested(e: MyFieldEnum) {}
+
 fn test_enum_sink() {
     let s = source(14);
     enum_sink(MyFieldEnum::C { field_c: s }); // $ hasValueFlow=14
     enum_sink(MyFieldEnum::D { field_d: s });
+    enum_sink_nested(MyFieldEnum::E { field_e: None });
+    enum_sink_nested(MyFieldEnum::E { field_e: Some(s) }); // $ hasValueFlow=14
 }
 
 fn test_enum_method_sink() {
@@ -288,6 +401,162 @@ fn test_arg_source() {
     sink(i) // $ hasValueFlow=i
 }
 
+trait MyTrait {
+    // has a source model
+    fn test_param_source(i: i64);
+}
+
+impl MyTrait for () {
+    fn test_param_source(i: i64) {
+        sink(i) // $ hasValueFlow=i
+    }
+}
+
+struct MyStruct2(i64);
+
+impl PartialEq for MyStruct {
+    fn eq(&self, other: &Self) -> bool {
+        true
+    }
+}
+
+impl PartialEq for MyStruct2 {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for MyStruct {}
+
+impl Eq for MyStruct2 {}
+
+use std::cmp::Ordering;
+
+impl PartialOrd for MyStruct {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(Ordering::Equal)
+    }
+}
+
+impl PartialOrd for MyStruct2 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.0.cmp(&other.0))
+    }
+}
+
+impl Ord for MyStruct {
+    fn cmp(&self, other: &Self) -> Ordering {
+        Ordering::Equal
+    }
+}
+
+impl Ord for MyStruct2 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+
+    fn max(self, other: Self) -> Self {
+        other
+    }
+}
+
+trait MyTrait3 {
+    fn flow_through3(i: i64) -> i64;
+}
+
+impl<T> MyTrait3 for T {
+    // has an explicit model
+    fn flow_through3(i: i64) -> i64 {
+        0
+    }
+}
+
+trait MySourceTrait3 {
+    fn produce3(i: i64) -> i64;
+}
+
+impl<T> MySourceTrait3 for T {
+    // has an explicit model
+    fn produce3(i: i64) -> i64 {
+        0
+    }
+}
+
+trait MySinkTrait3 {
+    fn consume3(i: i64);
+}
+
+impl<T> MySinkTrait3 for T {
+    // has an explicit model
+    fn consume3(i: i64) {}
+}
+
+fn test_trait_model<T: Ord>(x: T) {
+    let x1 = source(20).max(0);
+    sink(x1); // $ hasValueFlow=20
+
+    let x2 = (MyStruct {
+        field1: source(23),
+        field2: 0,
+    })
+    .max(MyStruct {
+        field1: 0,
+        field2: 0,
+    });
+    sink(x2.field1); // $ hasValueFlow=23
+
+    let x3 = MyStruct2(source(24)).max(MyStruct2(0));
+    sink(x3.0); // no flow, because the model does not apply when the target is in source code
+
+    let x4 = source(25).max(1);
+    sink(x4); // $ hasValueFlow=25
+
+    let x5 = source(26).lt(&1);
+    sink(x5); // $ hasTaintFlow=26
+
+    let x6 = source(27) < 1;
+    sink(x6); // $ hasTaintFlow=27
+
+    let x7 = (source(28) as i32) < 1;
+    sink(x7);
+
+    let x8 = <()>::flow_through2(source(29));
+    sink(x8); // $ hasValueFlow=29
+
+    let x9 = <()>::flow_through3(source(30));
+    sink(x9); // $ hasValueFlow=30
+
+    let x10 = <()>::produce2(31);
+    sink(x10); // $ hasValueFlow=31
+
+    let x11 = <()>::produce3(32);
+    sink(x11); // $ hasValueFlow=32
+
+    <()>::consume2(source(33)); // $ hasValueFlow=33
+
+    <()>::consume3(source(34)); // $ hasValueFlow=34
+}
+
+mod external_file;
+use external_file::*;
+
+fn test_neutrals() {
+    // neutral models should cause corresponding generated models to be ignored.
+    // Thus the `neutral_generated_source`, `neutral_generated_sink` and
+    // `neutral_generated_summary`, which have both a generated and a neutral
+    // model, should not have flow.
+
+    sink(generated_source(1)); // $ hasValueFlow=1
+    sink(neutral_generated_source(2));
+    sink(neutral_manual_source(3)); // $ hasValueFlow=3
+    generated_sink(source(4)); // $ hasValueFlow=4
+    neutral_generated_sink(source(5));
+    neutral_manual_sink(source(6)); // $ hasValueFlow=6
+    sink(generated_summary(source(7))); // $ hasValueFlow=7
+    sink(neutral_generated_summary(source(8)));
+    sink(neutral_manual_summary(source(9))); // $ hasValueFlow=9
+}
+
 #[tokio::main]
 async fn main() {
     test_identify();
@@ -309,5 +578,6 @@ async fn main() {
     test_simple_sink();
     test_get_async_number().await;
     test_arg_source();
+    test_neutrals();
     let dummy = Some(0); // ensure that the the `lang:core` crate is extracted
 }

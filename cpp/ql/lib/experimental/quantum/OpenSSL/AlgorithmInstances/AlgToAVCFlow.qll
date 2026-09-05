@@ -14,9 +14,13 @@ private import PaddingAlgorithmInstance
  */
 module KnownOpenSslAlgorithmToAlgorithmValueConsumerConfig implements DataFlow::ConfigSig {
   predicate isSource(DataFlow::Node source) {
-    source.asExpr() instanceof KnownOpenSslAlgorithmExpr and
+    (
+      source.asExpr() instanceof KnownOpenSslAlgorithmExpr or
+      source.asIndirectExpr() instanceof KnownOpenSslAlgorithmExpr
+    ) and
     // No need to flow direct operations to AVCs
-    not source.asExpr() instanceof OpenSslDirectAlgorithmOperationCall
+    not source.asExpr() instanceof OpenSslDirectAlgorithmOperationCall and
+    not source.asIndirectExpr() instanceof OpenSslDirectAlgorithmOperationCall
   }
 
   predicate isSink(DataFlow::Node sink) {
@@ -46,10 +50,12 @@ module KnownOpenSslAlgorithmToAlgorithmValueConsumerConfig implements DataFlow::
 }
 
 module KnownOpenSslAlgorithmToAlgorithmValueConsumerFlow =
-  DataFlow::Global<KnownOpenSslAlgorithmToAlgorithmValueConsumerConfig>;
+  TaintTracking::Global<KnownOpenSslAlgorithmToAlgorithmValueConsumerConfig>;
 
-module RSAPaddingAlgorithmToPaddingAlgorithmValueConsumerConfig implements DataFlow::ConfigSig {
-  predicate isSource(DataFlow::Node source) { source.asExpr() instanceof OpenSslPaddingLiteral }
+module RsaPaddingAlgorithmToPaddingAlgorithmValueConsumerConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node source) {
+    source.asExpr() instanceof OpenSslSpecialPaddingLiteral
+  }
 
   predicate isSink(DataFlow::Node sink) {
     exists(PaddingAlgorithmValueConsumer c | c.getInputNode() = sink)
@@ -60,8 +66,8 @@ module RSAPaddingAlgorithmToPaddingAlgorithmValueConsumerConfig implements DataF
   }
 }
 
-module RSAPaddingAlgorithmToPaddingAlgorithmValueConsumerFlow =
-  DataFlow::Global<RSAPaddingAlgorithmToPaddingAlgorithmValueConsumerConfig>;
+module RsaPaddingAlgorithmToPaddingAlgorithmValueConsumerFlow =
+  TaintTracking::Global<RsaPaddingAlgorithmToPaddingAlgorithmValueConsumerConfig>;
 
 class OpenSslAlgorithmAdditionalFlowStep extends AdditionalFlowInputStep {
   OpenSslAlgorithmAdditionalFlowStep() { exists(AlgorithmPassthroughCall c | c.getInNode() = this) }
@@ -114,11 +120,11 @@ class CopyAndDupAlgorithmPassthroughCall extends AlgorithmPassthroughCall {
   override DataFlow::Node getOutNode() { result = outNode }
 }
 
-class NIDToPointerPassthroughCall extends AlgorithmPassthroughCall {
+class NidToPointerPassthroughCall extends AlgorithmPassthroughCall {
   DataFlow::Node inNode;
   DataFlow::Node outNode;
 
-  NIDToPointerPassthroughCall() {
+  NidToPointerPassthroughCall() {
     this.getTarget().getName() in ["OBJ_nid2obj", "OBJ_nid2ln", "OBJ_nid2sn"] and
     inNode.asExpr() = this.getArgument(0) and
     outNode.asExpr() = this
@@ -150,11 +156,11 @@ class PointerToPointerPassthroughCall extends AlgorithmPassthroughCall {
   override DataFlow::Node getOutNode() { result = outNode }
 }
 
-class PointerToNIDPassthroughCall extends AlgorithmPassthroughCall {
+class PointerToNidPassthroughCall extends AlgorithmPassthroughCall {
   DataFlow::Node inNode;
   DataFlow::Node outNode;
 
-  PointerToNIDPassthroughCall() {
+  PointerToNidPassthroughCall() {
     this.getTarget().getName() in ["OBJ_obj2nid", "OBJ_ln2nid", "OBJ_sn2nid", "OBJ_txt2nid"] and
     (
       inNode.asIndirectExpr() = this.getArgument(0)

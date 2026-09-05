@@ -1,3 +1,195 @@
+## 1.9.3
+
+### Minor Analysis Improvements
+
+* The `cs/linq/missed-where` query no longer flags `foreach` loops where the matching branch terminates the method, iterator, or loop instead of continuing with filtered loop work.
+
+## 1.9.2
+
+### Minor Analysis Improvements
+
+* The `cs/simplifiable-boolean-expression` query no longer suggests replacing a negated comparison when the replacement could recursively call an enclosing user-defined operator in `build-mode: none` databases.
+* The `cs/web/missing-token-validation` query now recognizes enabled ASP.NET Core `RequireAntiforgeryToken` attributes when antiforgery middleware is used.
+* The query `cs/virtual-call-in-constructor` has been improved. Uses of virtual members in `nameof` expressions are no longer reported, since they are not calls.
+* Static constructors are now used as the enclosing callable for static member initializer expressions. This improves the precision of a range of queries, including `cs/useless-assignment-to-local` and `cs/dereferenced-value-may-be-null`.
+
+### Bug Fixes
+
+* The query `cs/useless-cast-to-self` no longer reports casts when both the expression type and the cast target type are unknown, which can occur in `build-mode: none` databases.
+
+## 1.9.1
+
+No user-facing changes.
+
+## 1.9.0
+
+### Query Metadata Changes
+
+* The query `cs/useless-assignment-to-local` has been removed from the `code-quality` suite, but it remains in the `code-quality-extended` suite.
+
+### Minor Analysis Improvements
+
+* `System.Web.HttpRequest.RawUrl` is no longer treated as a sanitizer for `cs/web/unvalidated-url-redirection`, since it contains the un-normalized request line. This may lead to more results.
+
+## 1.8.0
+
+### Query Metadata Changes
+
+* Added the tag `external/cwe/cwe-073` to `cs/assembly-path-injection`.
+
+## 1.7.5
+
+No user-facing changes.
+
+## 1.7.4
+
+No user-facing changes.
+
+## 1.7.3
+
+No user-facing changes.
+
+## 1.7.2
+
+No user-facing changes.
+
+## 1.7.1
+
+### Minor Analysis Improvements
+
+* The query `cs/useless-tostring-call` has been updated to avoid false
+  positive results in calls to `StringBuilder.AppendLine` and calls of
+  the form `base.ToString()`. Moreover, the alert message has been
+  made more precise.
+
+## 1.7.0
+
+### Query Metadata Changes
+
+* The `@security-severity` metadata of `cs/log-forging` has been reduced from 7.8 (high) to 6.1 (medium).
+* The `@security-severity` metadata of `cs/web/xss` has been increased from 6.1 (medium) to 7.8 (high).
+
+### Major Analysis Improvements
+
+* The `cs/constant-condition` query has been simplified. The query no longer reports trivially constant conditions as they were found to generally be intentional. As a result, it should now produce fewer false positives. Additionally, the simplification means that it now reports all the results that `cs/constant-comparison` used to report, and as consequence, that query has been deleted.
+
+## 1.6.6
+
+No user-facing changes.
+
+## 1.6.5
+
+No user-facing changes.
+
+## 1.6.4
+
+No user-facing changes.
+
+## 1.6.3
+
+No user-facing changes.
+
+## 1.6.2
+
+### Bug Fixes
+
+* The `cs/web/missing-token-validation` ("Missing cross-site request forgery token validation") query now recognizes antiforgery attributes on base controller classes, fixing false positives when `[ValidateAntiForgeryToken]` or `[AutoValidateAntiforgeryToken]` is applied to a parent class.
+
+## 1.6.1
+
+No user-facing changes.
+
+## 1.6.0
+
+### Query Metadata Changes
+
+* Updated the `name`, `description`, and alert message of `cs/path-combine` to have more details about why it's a problem.
+
+### Minor Analysis Improvements
+
+* Added `NHibernate.ISession.CreateSQLQuery`, `NHibernate.IStatelessSession.CreateSQLQuery` and `NHibernate.Impl.AbstractSessionImpl.CreateSQLQuery` as SQL injection sinks.
+* The `Missing cross-site request forgery token validation` query was extended to support ASP.NET Core.
+
+## 1.5.4
+
+No user-facing changes.
+
+## 1.5.3
+
+No user-facing changes.
+
+## 1.5.2
+
+No user-facing changes.
+
+## 1.5.1
+
+No user-facing changes.
+
+## 1.5.0
+
+### New Queries
+
+* The `cs/web/cookie-secure-not-set` and `cs/web/cookie-httponly-not-set` queries have been promoted from experimental to the main query pack.
+
+### Minor Analysis Improvements
+
+* An improvement to the Guards library for recognizing disjunctions means improved precision for `cs/constant-condition`, `cs/inefficient-containskey`, and `cs/dereferenced-value-may-be-null`. The two former can have additional findings, and the latter will have fewer false positives.
+
+## 1.4.3
+
+### Minor Analysis Improvements
+
+* The `cs/web/missing-x-frame-options` query now correctly handles configuration nested in root `<location>` elements.
+
+## 1.4.2
+
+No user-facing changes.
+
+## 1.4.1
+
+### Minor Analysis Improvements
+
+* The modeling of null guards based on complex pattern expressions has been improved, which in turn improves the query `cs/dereferenced-value-may-be-null` by removing false positives.
+* The query `cs/xmldoc/missing-summary` has been removed from the `code-quality` suite, to align with other languages.
+
+## 1.4.0
+
+### Deprecated Queries
+
+* The query `cs/captured-foreach-variable` has been deprecated as the semantics of capturing a 'foreach' variable and using it outside the loop has been stable since C# version 5.
+
+### Minor Analysis Improvements
+
+* The query `cs/call-to-object-tostring` has been improved to remove false positives for enum types.
+
+### Bug Fixes
+
+* The message for `csharp/diagnostic/database-quality` has been updated to include detailed database health metrics. Additionally, the threshold for reporting database health issues has been lowered from 95% to 85% (if any metric falls below this percentage). These changes are visible on the tool status page.
+
+## 1.3.4
+
+No user-facing changes.
+
+## 1.3.3
+
+No user-facing changes.
+
+## 1.3.2
+
+No user-facing changes.
+
+## 1.3.1
+
+### Minor Analysis Improvements
+
+* Explicitly added summary models for all overloads of `System.Xml.XmlDictionaryReader.CreateBinaryReader`. Added models for some of the methods and properties in `System.Runtime.Serialization.SerializationInfo` and `System.Runtime.Serialization.SerializationInfoEnumerator`. Updated models for `System.Text.Encoding.GetBytes`, `System.Text.Encoding.GetChars` and the constructor for `System.IO.MemoryStream`. This generally improves the library modelling and thus reduces the number of false negatives.
+* Added explicit SQL injection Models as Data models for `Microsoft.Data.SqlClient.SqlCommand` and `Microsoft.Data.SqlClient.SqlDataAdapter`. This reduces false negatives for the query `cs/sql-injection`.
+
+### Bug Fixes
+
+* `web.config` and `web.release.config` files are now recognized regardless of case. This means queries `cs/web/debug-binary` and `cs/web/missing-x-frame-options` may produce more results than before.
+
 ## 1.3.0
 
 ### Query Metadata Changes
@@ -116,7 +308,7 @@ No user-facing changes.
 
 ### Minor Analysis Improvements
 
-* C#: The method `string.ReplaceLineEndings(string)` is now considered a sanitizer for the `cs/log-forging` query. 
+* C#: The method `string.ReplaceLineEndings(string)` is now considered a sanitizer for the `cs/log-forging` query.
 
 ## 1.0.10
 

@@ -132,6 +132,7 @@ ql/javascript/ql/src/Security/CWE-116/UnsafeHtmlExpansion.ql
 ql/javascript/ql/src/Security/CWE-117/LogInjection.ql
 ql/javascript/ql/src/Security/CWE-1275/SameSiteNoneCookie.ql
 ql/javascript/ql/src/Security/CWE-134/TaintedFormatString.ql
+ql/javascript/ql/src/Security/CWE-1427/SystemPromptInjection.ql
 ql/javascript/ql/src/Security/CWE-178/CaseSensitiveMiddlewarePath.ql
 ql/javascript/ql/src/Security/CWE-200/FileAccessToHttp.ql
 ql/javascript/ql/src/Security/CWE-200/PrivateFileExposure.ql
@@ -184,6 +185,7 @@ ql/javascript/ql/src/Security/CWE-915/PrototypePollutingMergeCall.ql
 ql/javascript/ql/src/Security/CWE-916/InsufficientPasswordHash.ql
 ql/javascript/ql/src/Security/CWE-918/ClientSideRequestForgery.ql
 ql/javascript/ql/src/Security/CWE-918/RequestForgery.ql
+ql/javascript/ql/src/Security/CWE-942/CorsPermissiveConfiguration.ql
 ql/javascript/ql/src/Statements/DanglingElse.ql
 ql/javascript/ql/src/Statements/IgnoreArrayResult.ql
 ql/javascript/ql/src/Statements/InconsistentLoopOrientation.ql

@@ -179,7 +179,6 @@ predicate overflows(MulExpr me, Type t) {
 
 from MulExpr me, Type t1, Type t2
 where
-  not any(Compilation c).buildModeNone() and
   t1 = me.getType().getUnderlyingType() and
   t2 = me.getConversion().getType().getUnderlyingType() and
   t1.getSize() < t2.getSize() and
@@ -219,7 +218,9 @@ where
   // only report if we cannot prove that the result of the
   // multiplication will be less (resp. greater) than the
   // maximum (resp. minimum) number we can compute.
-  overflows(me, t1)
+  overflows(me, t1) and
+  // exclude cases where the expression type may not have been extracted accurately
+  not me.getParent().(Call).getTarget().hasAmbiguousReturnType()
 select me,
   "Multiplication result may overflow '" + me.getType().toString() + "' before it is converted to '"
     + me.getFullyConverted().getType().toString() + "'."

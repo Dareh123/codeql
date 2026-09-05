@@ -1,6 +1,8 @@
 /**
  * Definitions related to `java.net.*`.
  */
+overlay[local?]
+module;
 
 import semmle.code.java.Type
 private import semmle.code.java.dataflow.DataFlow
@@ -18,7 +20,7 @@ class TypeSocket extends RefType {
 
 /** The type `javax.net.SocketFactory` */
 class TypeSocketFactory extends RefType {
-  TypeSocketFactory() { this.hasQualifiedName("javax.net", "SocketFactory") }
+  TypeSocketFactory() { this.hasQualifiedName(javaxOrJakarta() + ".net", "SocketFactory") }
 }
 
 /** The type `java.net.URL`. */

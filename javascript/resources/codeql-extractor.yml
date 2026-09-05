@@ -6,8 +6,11 @@ display_name: "JavaScript/TypeScript"
 version: 1.22.1
 column_kind: "utf16"
 unicode_newlines: true
+overlay_support_version: 20250626
 build_modes:
   - none
+default_queries:
+  - codeql/javascript-queries
 file_coverage_languages:
   - name: javascript
     display_name: JavaScript
@@ -18,13 +21,27 @@ file_coverage_languages:
     scc_languages:
       - TypeScript
       - TypeScript Typings
+  - name: vue
+    display_name: Vue.js component
+    scc_languages:
+      - Vue
+  - name: html
+    display_name: HTML
+    scc_languages:
+      - HTML
+      - XHTML
 github_api_languages:
   - JavaScript
   - TypeScript
+  - Vue
+  - HTML
 scc_languages:
   - JavaScript
   - TypeScript
   - TypeScript Typings
+  - Vue
+  - HTML
+  - XHTML
 file_types:
   - name: javascript
     display_name: JavaScript

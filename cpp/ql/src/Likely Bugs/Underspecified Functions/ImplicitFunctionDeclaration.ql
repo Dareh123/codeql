@@ -17,6 +17,11 @@ import TooFewArguments
 import TooManyArguments
 import semmle.code.cpp.commons.Exclusions
 
+/*
+ * This query is not compatible with build-mode: none databases, and produces
+ * no results on those databases.
+ */
+
 predicate locInfo(Locatable e, File file, int line, int col) {
   e.getFile() = file and
   e.getLocation().getStartLine() = line and
@@ -38,8 +43,8 @@ predicate isCompiledAsC(File f) {
 
 from FunctionDeclarationEntry fdeIm, FunctionCall fc
 where
-  not any(Compilation c).buildModeNone() and
   isCompiledAsC(fdeIm.getFile()) and
+  not any(Compilation c).buildModeNone() and
   not isFromMacroDefinition(fc) and
   fdeIm.isImplicit() and
   sameLocation(fdeIm, fc) and

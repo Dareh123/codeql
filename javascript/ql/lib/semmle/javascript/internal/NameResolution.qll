@@ -17,6 +17,7 @@ module NameResolution {
    * A node in a graph which we use to perform name and type resolution.
    */
   class Node extends NodeBase {
+    /** Gets a string representation of this node. */
     string toString() {
       result = this.(AstNode).toString()
       or
@@ -25,6 +26,7 @@ module NameResolution {
       result = this.(JSDocTypeExpr).toString()
     }
 
+    /** Gets the location of this node. */
     Location getLocation() {
       result = this.(AstNode).getLocation()
       or
@@ -44,6 +46,9 @@ module NameResolution {
       this instanceof Module
       or
       this instanceof NamespaceDefinition // `module {}` or `enum {}` statement
+      or
+      // A module wrapped in a promise. We model this as a module exporting the actual module in a property called `$$promise-content`.
+      this instanceof DynamicImportExpr
     }
   }
 
@@ -68,6 +73,7 @@ module NameResolution {
    *
    * May also include some type-specific steps in cases where this is harmless when tracking values.
    */
+  pragma[nomagic]
   private predicate commonStep(Node node1, Node node2) {
     // Import paths are part of the graph and has an incoming edge from the imported module, if found.
     // This ensures we can also use the PathExpr as a source when working with external (unresolved) modules.
@@ -182,6 +188,7 @@ module NameResolution {
   /**
    * Holds if there is a read from `node1` to `node2` that accesses the member `name`.
    */
+  pragma[nomagic]
   predicate readStep(Node node1, string name, Node node2) {
     exists(QualifiedTypeAccess access |
       node1 = access.getQualifier() and
@@ -229,6 +236,19 @@ module NameResolution {
       node1 = expr.getBase() and
       name = expr.getName() and
       node2 = expr
+    )
+    or
+    exists(AwaitExpr await |
+      node1 = await.getOperand() and
+      name = "$$promise-content" and
+      node2 = await
+    )
+    or
+    exists(MethodCallExpr call |
+      call.getMethodName() = "then" and
+      node1 = call.getReceiver() and
+      name = "$$promise-content" and
+      node2 = call.getArgument(0).(Function).getParameter(0)
     )
   }
 
@@ -303,6 +323,7 @@ module NameResolution {
     /**
      * Gets the exported member of `mod` named `name`.
      */
+    pragma[nomagic]
     Node getModuleExport(ModuleLike mod, string name) {
       exists(ExportDeclaration exprt |
         mod = exprt.getContainer() and
@@ -332,12 +353,19 @@ module NameResolution {
       )
       or
       storeToVariable(result, name, mod.(Closure::ClosureModule).getExportsVariable())
+      or
+      exists(DynamicImportExpr imprt |
+        mod = imprt and
+        name = "$$promise-content" and
+        result = imprt.getImportedPathExpr()
+      )
     }
 
     /**
      * Holds if `value` is stored in `target.prop`. Only needs to recognise assignments
      * that are also recognised by JSDoc tooling such as the Closure compiler.
      */
+    pragma[nomagic]
     private predicate storeToVariable(Expr value, string prop, LocalVariableLike target) {
       exists(AssignExpr assign |
         // target.name = value
@@ -350,6 +378,7 @@ module NameResolution {
     }
 
     /** Steps that only apply for this configuration. */
+    pragma[nomagic]
     private predicate specificStep(Node node1, Node node2) {
       exists(LexicalName var | S::isRelevantVariable(var) |
         node1.(LexicalDecl).getALexicalName() = var and
@@ -382,6 +411,7 @@ module NameResolution {
     /** Helps track flow from a particular set of source nodes. */
     module Track<nodeSig/1 isSource> {
       /** Gets the set of nodes reachable from `source`. */
+      pragma[nomagic]
       Node track(Node source) {
         isSource(source) and
         result = source
@@ -395,6 +425,7 @@ module NameResolution {
     /** Helps track flow from a particular set of source nodes. */
     module TrackNode<AstNodeSig Source> {
       /** Gets the set of nodes reachable from `source`. */
+      pragma[nomagic]
       Node track(Source source) {
         result = source
         or
@@ -407,6 +438,10 @@ module NameResolution {
    * Gets a node to which the given module flows.
    */
   predicate trackModule = ValueFlow::TrackNode<ModuleLike>::track/1;
+
+  predicate trackClassValue = ValueFlow::TrackNode<ClassDefinition>::track/1;
+
+  predicate trackFunctionValue = ValueFlow::TrackNode<Function>::track/1;
 
   /**
    * Holds if `moduleName` appears to start with a package name, as opposed to a relative file import.
@@ -454,6 +489,7 @@ module NameResolution {
    *
    * Unlike `trackModule`, this is intended to track uses of external packages.
    */
+  pragma[nomagic]
   predicate nodeRefersToModule(Node node, string mod, string qualifiedName) {
     exists(Expr path |
       path = any(Import imprt).getImportedPathExpr() or
@@ -508,5 +544,26 @@ module NameResolution {
       readStep(mid, step, node) and
       qualifiedName = append(prefix, step)
     )
+  }
+
+  pragma[nomagic]
+  predicate classHasGlobalName(DataFlow::ClassNode cls, string name) {
+    cls.flowsTo(AccessPath::getAnAssignmentTo(name)) and
+    not cls.getTopLevel().isExterns() // don't propagate externs classes
+  }
+
+  /**
+   * Holds if `node` refers to the given class.
+   */
+  pragma[nomagic]
+  predicate nodeRefersToClass(Node node, DataFlow::ClassNode cls) {
+    exists(string name |
+      classHasGlobalName(cls, name) and
+      nodeRefersToModule(node, "global", name)
+    )
+    or
+    trackClassValue(cls.getAstNode()) = node
+    or
+    trackFunctionValue(cls.getAstNode()) = node
   }
 }

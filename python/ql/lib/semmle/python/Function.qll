@@ -1,3 +1,6 @@
+overlay[local]
+module;
+
 import python
 
 /**
@@ -84,12 +87,6 @@ class Function extends Function_, Scope, AstNode {
   /** Gets the name used to define this function */
   override string getName() { result = Function_.super.getName() }
 
-  /** Gets the metrics for this function */
-  FunctionMetrics getMetrics() { result = this }
-
-  /** Gets the FunctionObject corresponding to this function */
-  FunctionObject getFunctionObject() { result.getOrigin() = this.getDefinition() }
-
   /**
    * Whether this function is a procedure, that is, it has no explicit return statement and always returns None.
    * Note that generator and async functions are not procedures as they return generators and coroutines respectively.
@@ -156,8 +153,16 @@ class Function extends Function_, Scope, AstNode {
 
   override predicate contains(AstNode inner) { Scope.super.contains(inner) }
 
-  /** Gets a control flow node for a return value of this function */
-  ControlFlowNode getAReturnValueFlowNode() {
+  /**
+   * DEPRECATED: bind a `Return` node explicitly instead, e.g.
+   * `exists(Return ret | ret.getScope() = this and n.getNode() = ret.getValue())`.
+   * This API is being phased out together with `AstNode.getAFlowNode()` to
+   * untangle the AST and CFG hierarchies in preparation for migrating the
+   * dataflow library off the legacy CFG.
+   *
+   * Gets a control flow node for a return value of this function.
+   */
+  deprecated ControlFlowNode getAReturnValueFlowNode() {
     exists(Return ret |
       ret.getScope() = this and
       ret.getValue() = result.getNode()

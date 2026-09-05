@@ -51,7 +51,6 @@ int getComparisonSizeAdjustment(Expr e) {
 
 from Loop l, RelationalOperation rel, VariableAccess small, Expr large
 where
-  not any(Compilation c).buildModeNone() and
   small = rel.getLesserOperand() and
   large = rel.getGreaterOperand() and
   rel = l.getCondition().getAChild*() and

@@ -67,14 +67,16 @@ namespace Semmle.Extraction.CSharp
                     return;
                 }
 
-                var mscorlibExists = File.Exists(Path.Combine(compilerDir, "mscorlib.dll"));
+                var mscorlibExists = File.Exists(Path.Join(compilerDir, "mscorlib.dll"));
 
                 if (specifiedFramework is null && mscorlibExists)
                 {
                     specifiedFramework = compilerDir;
                 }
 
-                var versionInfo = FileVersionInfo.GetVersionInfo(SpecifiedCompiler);
+                // If csc is specified as compiler name, then attempt to read the version information from csc.dll
+                var compilerBinaryName = Path.GetFileName(SpecifiedCompiler) == "csc" ? $"{SpecifiedCompiler}.dll" : SpecifiedCompiler;
+                var versionInfo = FileVersionInfo.GetVersionInfo(File.Exists(compilerBinaryName) ? compilerBinaryName : SpecifiedCompiler);
                 if (!knownCompilerNames.TryGetValue(versionInfo.OriginalFilename ?? string.Empty, out var vendor))
                 {
                     SkipExtractionBecause("the compiler name is not recognised");
@@ -105,7 +107,7 @@ namespace Semmle.Extraction.CSharp
         /// <summary>
         /// The file csc.rsp.
         /// </summary>
-        private string CscRsp => Path.Combine(FrameworkPath, csc_rsp);
+        private string CscRsp => Path.Join(FrameworkPath, csc_rsp);
 
         /// <summary>
         /// Should we skip extraction?

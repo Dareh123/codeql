@@ -1,3 +1,191 @@
+## 2.4.5
+
+### Minor Analysis Improvements
+
+* HTML files are now included in file-coverage stats, and will start showing up on the status page for CodeQL under "Scanned Files".
+
+## 2.4.4
+
+### Minor Analysis Improvements
+
+* The `js/superfluous-trailing-arguments` query no longer reports valid arguments passed to the `TransformStream` constructor.
+
+## 2.4.3
+
+### Minor Analysis Improvements
+
+* The `js/missing-rate-limiting` query now recognizes the `@fastify/rate-limit` package as a rate limiter.
+
+## 2.4.2
+
+No user-facing changes.
+
+## 2.4.1
+
+No user-facing changes.
+
+## 2.4.0
+
+### New Queries
+
+* Added a new query, `js/system-prompt-injection`, to detect cases where untrusted, user-provided values flow into the system prompt of an AI model, allowing an attacker to manipulate the model's behavior.
+* Added a new experimental query, `javascript/ssrf-ipv6-transition-incomplete-guard`, to detect SSRF host-validation guards that reject private IPv4 ranges but fail to unwrap IPv6-transition forms (IPv4-mapped `::ffff:`, NAT64 `64:ff9b::`, 6to4 `2002::`), allowing the guard to be bypassed by wrapping an internal IPv4 address in a transition literal.
+
+## 2.3.11
+
+No user-facing changes.
+
+## 2.3.10
+
+No user-facing changes.
+
+## 2.3.9
+
+No user-facing changes.
+
+## 2.3.8
+
+### Minor Analysis Improvements
+
+* The query `js/missing-rate-limiting` now takes Fastify per-route
+  rate limiting into account.
+
+## 2.3.7
+
+No user-facing changes.
+
+## 2.3.6
+
+No user-facing changes.
+
+## 2.3.5
+
+No user-facing changes.
+
+## 2.3.4
+
+No user-facing changes.
+
+## 2.3.3
+
+No user-facing changes.
+
+## 2.3.2
+
+No user-facing changes.
+
+## 2.3.1
+
+No user-facing changes.
+
+## 2.3.0
+
+### Major Analysis Improvements
+
+* JavaScript files with an average line length greater than 200 are now considered minified and will no longer be analyzed.
+  For use-cases where minified files should be analyzed, the original behavior can be restored by setting the environment variable
+  `CODEQL_EXTRACTOR_JAVASCRIPT_ALLOW_MINIFIED_FILES=true`.
+
+### Minor Analysis Improvements
+
+* The model of `vue-router` now properly detects taint sources in cases where
+  the `props` property is a callback.
+* Fixed a bug in the Next.js model that would cause the analysis to miss server-side taint sources in files
+  named `route` or `page` appearing outside `api` and `pages` folders.
+* `new Response(x)` is no longer seen as a reflected XSS sink when no `content-type` header
+  is set, since the content type defaults to `text/plain`.
+
+## 2.2.4
+
+No user-facing changes.
+
+## 2.2.3
+
+No user-facing changes.
+
+## 2.2.2
+
+No user-facing changes.
+
+## 2.2.1
+
+### Minor Analysis Improvements
+
+* Fixed a bug in the Next.js model that would cause the analysis to miss server-side taint sources in the `app/pages` folder.
+
+## 2.2.0
+
+### Query Metadata Changes
+
+* Increased the `security-severity` score of the `js/xss-through-dom` query from 6.1 to 7.8 to align with other XSS queries.
+* Reduced the `security-severity` score of the `js/overly-large-range` query from 5.0 to 4.0 to better reflect its impact.
+
+## 2.1.3
+
+No user-facing changes.
+
+## 2.1.2
+
+No user-facing changes.
+
+## 2.1.1
+
+No user-facing changes.
+
+## 2.1.0
+
+### Major Analysis Improvements
+
+* Added support for TypeScript 5.9
+* Added support for `import defer` syntax in JavaScript and TypeScript.
+
+### Minor Analysis Improvements
+
+* Data flow is now tracked through the `Promise.try` and `Array.prototype.with` functions.
+* Query `js/index-out-of-bounds` no longer produces a false-positive when a strictly-less-than check overrides a previous less-than-or-equal test.
+* The query `js/remote-property-injection` now detects property injection vulnerabilities through object enumeration patterns such as `Object.keys()`. 
+* The query "Permissive CORS configuration" (`js/cors-permissive-configuration`) has been promoted from experimental and is now part of the default security suite. Thank you to @maikypedia who [submitted the original experimental query](https://github.com/github/codeql/pull/14342)!
+
+## 2.0.3
+
+No user-facing changes.
+
+## 2.0.2
+
+### Minor Analysis Improvements
+
+* The `js/regex-injection` query no longer considers environment variables as sources by default. Environment variables can be re-enabled as sources by setting the threat model to include the "environment" category.
+
+## 2.0.1
+
+No user-facing changes.
+
+## 2.0.0
+
+### Breaking Changes
+
+* The `Type` and `Symbol` classes have been deprecated and will be empty in newly extracted databases, since the TypeScript extractor no longer populates them.
+  This is a breaking change for custom queries that explicitly relied on these classes.
+  Such queries will still compile, but with deprecation warnings, and may have different query results due to type information no longer being available.
+  We expect most custom queries will not be affected, however. If a custom query has no deprecation warnings, it should not be affected by this change.
+  Uses of `getType()` should be rewritten to use the new `getTypeBinding()` or `getNameBinding()` APIs instead.
+  If the new API is not sufficient, please consider opening an issue in `github/codeql` describing your use-case.
+
+### Major Analysis Improvements
+
+* The TypeScript extractor no longer relies on the TypeScript compiler for extracting type information.
+  Instead, the information we need from types is now derived by an algorithm written in QL.
+  This results in more robust extraction with faster extraction times, in some cases significantly faster.
+* Taint is now tracked through the React `use` function.
+* Parameters of React server functions, marked with the `"use server"` directive, are now seen as taint sources.
+
+### Minor Analysis Improvements
+
+* Removed three queries from the JS qlpack, which have been superseded by newer queries that are part of the Actions qlpack:
+  * `js/actions/pull-request-target` has been superseded by `actions/untrusted-checkout/{medium,high,critical}`
+  * `js/actions/actions-artifact-leak` has been superseded by `actions/secrets-in-artifacts`
+  * `js/actions/command-injection` has been superseded by `actions/command-injection/{medium,critical}`
+
 ## 1.7.0
 
 ### Query Metadata Changes

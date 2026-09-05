@@ -1,6 +1,8 @@
 /**
  * Provides JS specific classes and predicates for defining flow summaries.
  */
+overlay[local?]
+module;
 
 private import javascript
 private import semmle.javascript.dataflow.internal.DataFlowPrivate
@@ -10,18 +12,24 @@ private import sharedlib.FlowSummaryImpl::Private as Private
 private import sharedlib.FlowSummaryImpl::Public
 private import codeql.dataflow.internal.AccessPathSyntax as AccessPathSyntax
 private import semmle.javascript.internal.flow_summaries.ExceptionFlow
+private import codeql.util.Void
 
 /**
  * A class of callables that are candidates for flow summary modeling.
  */
-class SummarizedCallableBase = string;
+class SummarizedCallableBase extends string {
+  bindingset[this]
+  SummarizedCallableBase() { exists(this) }
 
-class SourceBase extends Unit {
-  SourceBase() { none() }
+  Location getLocation() { none() }
 }
 
-class SinkBase extends Unit {
-  SinkBase() { none() }
+class FlowSummaryCallBase extends Void {
+  Location getLocation() { none() }
+}
+
+DataFlowCallable getSummarizedCallableAsDataFlowCallable(SummarizedCallableBase c) {
+  result.asLibraryCallable() = c
 }
 
 /** Gets the parameter position representing a callback itself, if any. */
@@ -94,6 +102,8 @@ private string encodeContentAux(ContentSet cs, string arg) {
     cs = ContentSet::iteratorElement() and result = "IteratorElement"
     or
     cs = ContentSet::iteratorError() and result = "IteratorError"
+    or
+    cs = ContentSet::anyProperty() and result = "AnyMember"
   )
   or
   cs = getPromiseContent(arg) and
@@ -137,7 +147,26 @@ string encodeArgumentPosition(ArgumentPosition pos) {
 /** Gets the return kind corresponding to specification `"ReturnValue"`. */
 ReturnKind getStandardReturnValueKind() { result = MkNormalReturnKind() and Stage::ref() }
 
-private module FlowSummaryStepInput implements Private::StepsInputSig {
+private module Input2 implements Private::InputSig2 {
+  private import codeql.util.Void
+
+  class SourceSinkReportingElement extends Void {
+    Location getLocation() { none() }
+
+    DataFlowCallable getEnclosingCallable() { none() }
+
+    SourceSinkReportingElement getASuccessor(Private::SummaryComponent sc) { none() }
+  }
+}
+
+import Private::Make2<Input2> as Impl2
+
+private module FlowSummaryStepInput implements Impl2::StepsInputSig {
+  Impl2::SummaryNode getSummaryNode(DataFlow::Node n) {
+    result = n.(FlowSummaryNode).getSummaryNode()
+  }
+
+  overlay[global]
   DataFlowCall getACall(SummarizedCallable sc) {
     exists(LibraryCallable callable | callable = sc |
       result.asOrdinaryCall() =
@@ -147,10 +176,6 @@ private module FlowSummaryStepInput implements Private::StepsInputSig {
         ]
     )
   }
-
-  DataFlow::Node getSourceNode(SourceBase source, Private::SummaryComponent sc) { none() }
-
-  DataFlow::Node getSinkNode(SinkBase sink, Private::SummaryComponent sc) { none() }
 }
 
 module Steps = Private::Steps<FlowSummaryStepInput>;

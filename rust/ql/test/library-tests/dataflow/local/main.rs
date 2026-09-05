@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 // Tests for intraprocedural data flow.
 
 fn source(i: i64) -> i64 {
@@ -21,6 +22,19 @@ fn direct() {
 fn variable_usage() {
     let s = source(2);
     sink(s); // $ hasValueFlow=2
+
+    if let x = s {
+        sink(x); // $ hasValueFlow=2
+    };
+
+    if let x = s
+        && {
+            sink(x); // $ hasValueFlow=2
+            true
+        }
+    {
+        sink(x); // $ hasValueFlow=2
+    };
 }
 
 fn if_expression(cond: bool) {
@@ -55,6 +69,18 @@ fn assignment() {
     sink(i);
     i = source(6);
     sink(i); // $ hasValueFlow=6
+    i = 2;
+    sink(i);
+
+    let mut j = 3;
+    let k = source(7);
+    j = k;
+    sink(j); // $ hasValueFlow=7
+    sink(k); // $ hasValueFlow=7
+
+    let mut l = source(8);
+    l = l;
+    sink(l); // $ hasValueFlow=8
 }
 
 fn block_expression1() -> i64 {
@@ -233,6 +259,18 @@ fn option_pattern_match_unqualified() {
     match s2 {
         Some(n) => sink(n),
         None => sink(0),
+    }
+}
+
+fn option_chained_let() {
+    let s1 = Some(source(45));
+    if let Some(n) = s1
+        && {
+            sink(n); // $ hasValueFlow=45
+            true
+        }
+    {
+        sink(n); // $ hasValueFlow=45
     }
 }
 
@@ -470,9 +508,9 @@ fn parse() {
     let d: i64 = b.parse().unwrap();
 
     sink(a); // $ hasValueFlow=90
-    sink_string(b); // $ MISSING: we are not currently able to resolve the `to_string` call above, which comes from `impl<T: fmt::Display + ?Sized> ToString for T`
-    sink(c); // $ MISSING: hasTaintFlow=90 - we are not currently able to resolve the `parse` call above
-    sink(d); // $ MISSING: hasTaintFlow=90 - we are not currently able to resolve the `parse` call above
+    sink_string(b); // $ hasTaintFlow=90
+    sink(c); // $ hasTaintFlow=90
+    sink(d); // $ hasTaintFlow=90
 }
 
 fn iterators() {
@@ -528,13 +566,13 @@ fn conversions() {
     let a: i64 = source(50);
 
     sink(a as i64); // $ hasTaintFlow=50
-    sink(a.into()); // $ MISSING: hasValueFlow=50
-    sink(i64::from(a)); // $ hasTaintFlow=50
+    sink(a.into()); // $ SPURIOUS: hasTaintFlow=50 $ MISSING: hasValueFlow=50 -- it is not possible to define a value-preserving summary for `into` since it depends on which `from` function is called
+    sink(i64::from(a)); // $ hasValueFlow=50
 
     let b: i32 = source(51) as i32;
 
     sink(b as i64); // $ hasTaintFlow=51
-    sink(b.into()); // $ MISSING: hasTaintFlow=51
+    sink(b.into()); // $ hasTaintFlow=51
     sink(i64::from(b)); // $ hasTaintFlow=51
 }
 
@@ -558,6 +596,7 @@ fn main() {
     struct_nested_match();
     option_pattern_match_qualified();
     option_pattern_match_unqualified();
+    option_chained_let();
     option_unwrap();
     option_unwrap_or();
     option_questionmark();

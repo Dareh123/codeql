@@ -33,13 +33,27 @@ module Impl {
       name = this.getStructPatFieldList().getAField().getFieldName()
     }
 
-    /** Gets the record field that matches the `name` pattern of this pattern. */
+    /** Gets the struct field that matches the `name` pattern of this pattern. */
     pragma[nomagic]
     StructField getStructField(string name) {
       exists(PathResolution::ItemNode i | i = this.getResolvedPath(name) |
         result.isStructField(i, name) or
         result.isVariantField(i, name)
       )
+    }
+
+    /** Gets the `i`th struct field of the instantiated struct or variant. */
+    StructField getNthStructField(int i) {
+      exists(PathResolution::ItemNode item | item = this.getResolvedPath(_) |
+        result = [item.(Struct).getNthStructField(i), item.(Variant).getNthStructField(i)]
+      )
+    }
+
+    /** Gets the struct pattern for the field `name`. */
+    pragma[nomagic]
+    StructPatField getPatField(string name) {
+      result = this.getStructPatFieldList().getAField() and
+      name = result.getFieldName()
     }
   }
 }

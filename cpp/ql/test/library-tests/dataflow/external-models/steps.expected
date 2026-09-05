@@ -1,8 +1,34 @@
 | asio_streams.cpp:100:64:100:71 | *send_str | asio_streams.cpp:100:44:100:62 | call to buffer |
+| azure.cpp:252:79:252:98 | call to string | azure.cpp:252:62:252:99 | call to Url |
+| azure.cpp:257:5:257:8 | *resp | azure.cpp:257:16:257:21 | Read output argument |
+| azure.cpp:262:5:262:8 | *resp | azure.cpp:262:23:262:28 | ReadToCount output argument |
+| azure.cpp:287:79:287:98 | call to string | azure.cpp:287:62:287:99 | call to Url |
+| azure.cpp:289:24:289:56 | call to GetHeader | azure.cpp:289:63:289:65 | call to Value |
+| bdlbb.cpp:56:49:56:52 | *call to data | bdlbb.cpp:56:37:56:41 | copy output argument |
+| bdlbb.cpp:58:42:58:45 | *blob | bdlbb.cpp:58:37:58:39 | copy output argument |
+| bdlbb.cpp:65:49:65:52 | *call to data | bdlbb.cpp:65:37:65:41 | copy output argument |
+| bdlbb.cpp:66:18:66:21 | *blob | bdlbb.cpp:66:29:66:32 | *call to buffer |
+| bdlbb.cpp:66:29:66:32 | *call to buffer | bdlbb.cpp:66:18:66:38 | *call to data |
+| bdlbb.cpp:74:49:74:52 | *call to data | bdlbb.cpp:74:37:74:41 | copy output argument |
+| bdlbb.cpp:75:18:75:21 | *blob | bdlbb.cpp:75:29:75:32 | *call to buffer |
+| bdlbb.cpp:75:29:75:32 | *call to buffer | bdlbb.cpp:75:39:75:41 | *call to buffer |
+| bdlbb.cpp:82:49:82:52 | *call to data | bdlbb.cpp:82:37:82:41 | copy output argument |
+| bdlbb.cpp:84:72:84:75 | *blob | bdlbb.cpp:84:12:84:65 | *call to getContiguousRangeOrCopy |
+| bdlbb.cpp:84:72:84:75 | *blob | bdlbb.cpp:84:67:84:69 | getContiguousRangeOrCopy output argument |
+| bdlbb.cpp:92:48:92:51 | *call to data | bdlbb.cpp:92:37:92:40 | copy output argument |
+| bdlbb.cpp:94:46:94:48 | *src | bdlbb.cpp:94:37:94:40 | copy output argument |
+| bdlbb.cpp:96:42:96:44 | *dst | bdlbb.cpp:96:37:96:39 | copy output argument |
 | test.cpp:17:24:17:24 | x | test.cpp:17:10:17:22 | call to ymlStepManual |
 | test.cpp:21:27:21:27 | x | test.cpp:21:10:21:25 | call to ymlStepGenerated |
 | test.cpp:25:35:25:35 | x | test.cpp:25:11:25:33 | call to ymlStepManual_with_body |
 | test.cpp:28:35:28:35 | 0 | test.cpp:28:11:28:33 | call to ymlStepManual_with_body |
-| test.cpp:32:38:32:38 | 0 | test.cpp:32:11:32:36 | call to ymlStepGenerated_with_body |
-| test.cpp:35:38:35:38 | x | test.cpp:35:11:35:36 | call to ymlStepGenerated_with_body |
 | windows.cpp:27:36:27:38 | *cmd | windows.cpp:27:17:27:34 | **call to CommandLineToArgvA |
+| windows.cpp:729:35:729:35 | *x | windows.cpp:729:44:729:57 | WinHttpCrackUrl output argument |
+| windows.cpp:1124:19:1124:21 | *str | windows.cpp:1124:24:1124:27 | IIDFromString output argument |
+| windows.cpp:1130:19:1130:21 | *iid | windows.cpp:1130:24:1130:27 | StringFromIID output argument |
+| windows.cpp:1137:21:1137:25 | *clsid | windows.cpp:1137:28:1137:31 | ProgIDFromCLSID output argument |
+| windows.cpp:1145:21:1145:26 | *progID | windows.cpp:1145:29:1145:34 | CLSIDFromProgID output argument |
+| windows.cpp:1152:21:1152:23 | *str | windows.cpp:1152:26:1152:31 | CLSIDFromString output argument |
+| windows.cpp:1158:21:1158:25 | *clsid | windows.cpp:1158:28:1158:31 | StringFromCLSID output argument |
+| windows.cpp:1166:20:1166:22 | *str | windows.cpp:1166:25:1166:29 | GUIDFromString output argument |
+| windows.cpp:1172:21:1172:24 | *guid | windows.cpp:1172:27:1172:29 | StringFromGUID2 output argument |

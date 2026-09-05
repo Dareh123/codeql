@@ -11,10 +11,6 @@
     "java/ql/lib/semmle/code/java/dataflow/internal/rangeanalysis/SignAnalysisCommon.qll",
     "csharp/ql/lib/semmle/code/csharp/dataflow/internal/rangeanalysis/SignAnalysisCommon.qll"
   ],
-  "Bound Java/C#": [
-    "java/ql/lib/semmle/code/java/dataflow/Bound.qll",
-    "csharp/ql/lib/semmle/code/csharp/dataflow/Bound.qll"
-  ],
   "ModulusAnalysis Java/C#": [
     "java/ql/lib/semmle/code/java/dataflow/ModulusAnalysis.qll",
     "csharp/ql/lib/semmle/code/csharp/dataflow/ModulusAnalysis.qll"
@@ -172,10 +168,6 @@
     "cpp/ql/lib/semmle/code/cpp/ir/implementation/raw/internal/reachability/PrintDominance.qll",
     "cpp/ql/lib/semmle/code/cpp/ir/implementation/unaliased_ssa/internal/reachability/PrintDominance.qll"
   ],
-  "C# ControlFlowReachability": [
-    "csharp/ql/lib/semmle/code/csharp/dataflow/internal/ControlFlowReachability.qll",
-    "csharp/ql/lib/semmle/code/csharp/dataflow/internal/rangeanalysis/ControlFlowReachability.qll"
-  ],
   "C++ ExternalAPIs": [
     "cpp/ql/src/Security/CWE/CWE-020/ExternalAPIs.qll",
     "cpp/ql/src/Security/CWE/CWE-020/ir/ExternalAPIs.qll"
@@ -231,34 +223,9 @@
     "java/ql/src/experimental/Security/CWE/CWE-400/LocalThreadResourceAbuse.qhelp",
     "java/ql/src/experimental/Security/CWE/CWE-400/ThreadResourceAbuse.qhelp"
   ],
-  "CryptoAlgorithms Python/JS/Ruby": [
-    "javascript/ql/lib/semmle/javascript/security/CryptoAlgorithms.qll",
-    "python/ql/lib/semmle/python/concepts/CryptoAlgorithms.qll",
-    "ruby/ql/lib/codeql/ruby/security/CryptoAlgorithms.qll",
-    "rust/ql/lib/codeql/rust/security/CryptoAlgorithms.qll"
-  ],
-  "CryptoAlgorithmNames Python/JS/Ruby": [
-    "javascript/ql/lib/semmle/javascript/security/internal/CryptoAlgorithmNames.qll",
-    "python/ql/lib/semmle/python/concepts/internal/CryptoAlgorithmNames.qll",
-    "ruby/ql/lib/codeql/ruby/security/internal/CryptoAlgorithmNames.qll",
-    "rust/ql/lib/codeql/rust/security/internal/CryptoAlgorithmNames.qll"
-  ],
-  "SensitiveDataHeuristics Python/JS": [
-    "javascript/ql/lib/semmle/javascript/security/internal/SensitiveDataHeuristics.qll",
-    "python/ql/lib/semmle/python/security/internal/SensitiveDataHeuristics.qll",
-    "ruby/ql/lib/codeql/ruby/security/internal/SensitiveDataHeuristics.qll",
-    "swift/ql/lib/codeql/swift/security/internal/SensitiveDataHeuristics.qll",
-    "rust/ql/lib/codeql/rust/security/internal/SensitiveDataHeuristics.qll"
-  ],
   "IncompleteUrlSubstringSanitization": [
     "javascript/ql/src/Security/CWE-020/IncompleteUrlSubstringSanitization.qll",
     "ruby/ql/src/queries/security/cwe-020/IncompleteUrlSubstringSanitization.qll"
-  ],
-  "Concepts Python/Ruby/JS": [
-    "python/ql/lib/semmle/python/internal/ConceptsShared.qll",
-    "ruby/ql/lib/codeql/ruby/internal/ConceptsShared.qll",
-    "javascript/ql/lib/semmle/javascript/internal/ConceptsShared.qll",
-    "rust/ql/lib/codeql/rust/internal/ConceptsShared.qll"
   ],
   "ApiGraphModels": [
     "javascript/ql/lib/semmle/javascript/frameworks/data/internal/ApiGraphModels.qll",
@@ -301,5 +268,13 @@
   "Python model summaries test extension": [
     "python/ql/test/library-tests/dataflow/model-summaries/InlineTaintTest.ext.yml",
     "python/ql/test/library-tests/dataflow/model-summaries/NormalDataflowTest.ext.yml"
+  ],
+  "XML discard predicates": [
+    "javascript/ql/lib/semmle/javascript/internal/OverlayXml.qll",
+    "java/ql/lib/semmle/code/java/internal/OverlayXml.qll",
+    "go/ql/lib/semmle/go/internal/OverlayXml.qll",
+    "python/ql/lib/semmle/python/internal/OverlayXml.qll",
+    "csharp/ql/lib/semmle/code/csharp/internal/OverlayXml.qll",
+    "cpp/ql/lib/semmle/code/cpp/internal/OverlayXml.qll"
   ]
 }

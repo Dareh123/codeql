@@ -18,13 +18,13 @@ import IncorrectPointerScalingCommon
 private predicate isCharSzPtrExpr(Expr e) {
   exists(PointerType pt | pt = e.getFullyConverted().getUnspecifiedType() |
     pt.getBaseType() instanceof CharType or
-    pt.getBaseType() instanceof VoidType
+    pt.getBaseType() instanceof VoidType or
+    pt.getBaseType() instanceof ErroneousType // this could be char / void type in a successful compilation
   )
 }
 
 from Expr sizeofExpr, Expr e
 where
-  not any(Compilation c).buildModeNone() and
   // If we see an addWithSizeof then we expect the type of
   // the pointer expression to be `char*` or `void*`. Otherwise it
   // is probably a mistake.

@@ -266,6 +266,7 @@ compGenerated
 | file://<external>/AccessFlag$Location.class:0:0:0:0 | getEntries | Default property accessor |
 | file://<external>/AccessFlag.class:0:0:0:0 | getEntries | Default property accessor |
 | file://<external>/AccessMode.class:0:0:0:0 | getEntries | Default property accessor |
+| file://<external>/ByteOrder.class:0:0:0:0 | getEntries | Default property accessor |
 | file://<external>/CharProgression.class:0:0:0:0 | forEach | Forwarder for a Kotlin class inheriting an interface default method |
 | file://<external>/CharProgression.class:0:0:0:0 | spliterator | Forwarder for a Kotlin class inheriting an interface default method |
 | file://<external>/CharRange.class:0:0:0:0 | forEach | Forwarder for a Kotlin class inheriting an interface default method |
@@ -329,6 +330,7 @@ compGenerated
 | file://<external>/SignStyle.class:0:0:0:0 | getEntries | Default property accessor |
 | file://<external>/StackWalker$ExtendedOption.class:0:0:0:0 | getEntries | Default property accessor |
 | file://<external>/StackWalker$Option.class:0:0:0:0 | getEntries | Default property accessor |
+| file://<external>/String.class:0:0:0:0 | getChars | Forwarder for a Kotlin class inheriting an interface default method |
 | file://<external>/String.class:0:0:0:0 | isEmpty | Forwarder for a Kotlin class inheriting an interface default method |
 | file://<external>/TextStyle.class:0:0:0:0 | getEntries | Default property accessor |
 | file://<external>/Thread$State.class:0:0:0:0 | getEntries | Default property accessor |

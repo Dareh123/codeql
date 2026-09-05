@@ -57,25 +57,16 @@ module TaintedPath {
     PathAsSink() { this = any(FileSystemAccess fsa).getAPathArgument() }
   }
 
+  private class ExternalSanitizer extends Sanitizer {
+    ExternalSanitizer() { barrierNode(this, "path-injection") }
+  }
+
   /**
    * A numeric- or boolean-typed node, considered a sanitizer for path traversal.
    */
   class NumericOrBooleanSanitizer extends Sanitizer {
     NumericOrBooleanSanitizer() {
       this.getType() instanceof NumericType or this.getType() instanceof BoolType
-    }
-  }
-
-  /**
-   * A call to `filepath.Rel`, considered as a sanitizer for path traversal.
-   */
-  class FilepathRelSanitizer extends Sanitizer {
-    FilepathRelSanitizer() {
-      exists(Function f, FunctionOutput outp |
-        f.hasQualifiedName("path/filepath", "Rel") and
-        outp.isResult(0) and
-        this = outp.getNode(f.getACall())
-      )
     }
   }
 
@@ -87,7 +78,7 @@ module TaintedPath {
       exists(DataFlow::CallNode cleanCall, StringOps::Concatenation concatNode |
         cleanCall = any(Function f | f.hasQualifiedName("path/filepath", "Clean")).getACall() and
         concatNode = cleanCall.getArgument(0) and
-        concatNode.getOperand(0).asExpr().(StringLit).getValue() = "/" and
+        concatNode.getOperand(0).getStringValue().prefix(1) = ["/", "\\"] and
         this = cleanCall.getResult()
       )
     }
@@ -109,44 +100,6 @@ module TaintedPath {
             .hasQualifiedName(package("github.com/gorilla/mux", ""), "Router", "SkipClean") and
         f.getArgument(0).getBoolValue() = true
       )
-    }
-  }
-
-  /**
-   * A read from the field `Filename` of the type `mime/multipart.FileHeader`,
-   * considered as a sanitizer for path traversal.
-   *
-   * The only way to create a `mime/multipart.FileHeader` is to create a
-   * `mime/multipart.Form`, which creates the `Filename` field of each
-   * `mime/multipart.FileHeader` by calling `Part.FileName`, which calls
-   * `path/filepath.Base` on its return value. In general `path/filepath.Base`
-   * is not a sanitizer for path traversal, but in this specific case where the
-   * output is going to be used as a filename rather than a directory name, it
-   * is adequate.
-   */
-  class MimeMultipartFileHeaderFilenameSanitizer extends Sanitizer {
-    MimeMultipartFileHeaderFilenameSanitizer() {
-      this.(DataFlow::FieldReadNode)
-          .getField()
-          .hasQualifiedName("mime/multipart", "FileHeader", "Filename")
-    }
-  }
-
-  /**
-   * A call to `mime/multipart.Part.FileName`, considered as a sanitizer
-   * against path traversal.
-   *
-   * `Part.FileName` calls `path/filepath.Base` on its return value. In
-   * general `path/filepath.Base` is not a sanitizer for path traversal, but in
-   * this specific case where the output is going to be used as a filename
-   * rather than a directory name, it is adequate.
-   */
-  class MimeMultipartPartFileNameSanitizer extends Sanitizer {
-    MimeMultipartPartFileNameSanitizer() {
-      this =
-        any(Method m | m.hasQualifiedName("mime/multipart", "Part", "FileName"))
-            .getACall()
-            .getResult()
     }
   }
 
@@ -174,43 +127,6 @@ module TaintedPath {
    */
   class DotDotReplaceAll extends StringOps::ReplaceAll, Sanitizer {
     DotDotReplaceAll() { this.getReplacedString() = ["..", "."] }
-  }
-
-  /**
-   * A node `nd` guarded by a check that ensures it is contained within some root folder,
-   * considered as a sanitizer for path traversal.
-   *
-   * We currently recognize checks of the following form:
-   *
-   * ```
-   * ..., err := filepath.Rel(base, path)
-   * if err == nil {
-   *   // path is known to be contained in base
-   * }
-   * ```
-   */
-  class PathContainmentCheck extends SanitizerGuard, DataFlow::EqualityTestNode {
-    DataFlow::Node path;
-    boolean outcome;
-
-    PathContainmentCheck() {
-      exists(Function f, FunctionInput inp, FunctionOutput outp, DataFlow::Property p |
-        f.hasQualifiedName("path/filepath", "Rel") and
-        inp.isParameter(1) and
-        outp.isResult(1) and
-        p.isNil()
-      |
-        exists(DataFlow::Node call, DataFlow::Node res |
-          call = f.getACall() and
-          DataFlow::localFlow(outp.getNode(call), res)
-        |
-          p.checkOn(this, outcome, res) and
-          path = inp.getNode(call)
-        )
-      )
-    }
-
-    override predicate checks(Expr e, boolean branch) { e = path.asExpr() and branch = outcome }
   }
 
   /**
@@ -242,5 +158,21 @@ module TaintedPath {
     RegexpCheckAsSanitizerGuard() { regexpFunctionChecksExpr(this, _, _) }
 
     override predicate checks(Expr e, boolean branch) { regexpFunctionChecksExpr(this, e, branch) }
+  }
+
+  /**
+   * A call of the form `filepath.IsLocal(path)` considered as a sanitizer guard for `path`.
+   */
+  class IsLocalCheck extends SanitizerGuard, DataFlow::CallNode {
+    IsLocalCheck() {
+      exists(Function f |
+        f.hasQualifiedName("path/filepath", "IsLocal") and
+        this = f.getACall()
+      )
+    }
+
+    override predicate checks(Expr e, boolean branch) {
+      e = this.getArgument(0).asExpr() and branch = true
+    }
   }
 }

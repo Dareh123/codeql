@@ -3,8 +3,10 @@
 import python
 import semmle.python.dataflow.new.DataFlow
 
+final class FinalAstNode = AstNode;
+
 /** A looping construct. */
-abstract class Loop extends AstNode {
+abstract class Loop extends FinalAstNode {
   /**
    * Gets a loop variable of this loop.
    * For example, `x` and `y` in `for x,y in pairs: print(x+y)`
@@ -13,9 +15,9 @@ abstract class Loop extends AstNode {
 }
 
 /** A `for` loop. */
-private class ForLoop extends Loop, For {
+private class ForLoop extends Loop instanceof For {
   override Variable getALoopVariable() {
-    this.getTarget() = result.getAnAccess().getParentNode*() and
+    this.(For).getTarget() = result.getAnAccess().getParentNode*() and
     result.getScope() = this.getScope()
   }
 }
@@ -59,10 +61,11 @@ module EscapingCaptureFlowConfig implements DataFlow::ConfigSig {
   predicate allowImplicitRead(DataFlow::Node node, DataFlow::ContentSet cs) {
     isSink(node) and
     (
-      cs.(DataFlow::TupleElementContent).getIndex() in [0 .. 10] or
-      cs instanceof DataFlow::ListElementContent or
-      cs instanceof DataFlow::SetElementContent or
-      cs instanceof DataFlow::DictionaryElementAnyContent
+      cs.isAnyTupleOrDictionaryElement()
+      or
+      cs.getAStoreContent() instanceof DataFlow::ListElementContent
+      or
+      cs.getAStoreContent() instanceof DataFlow::SetElementContent
     )
   }
 }

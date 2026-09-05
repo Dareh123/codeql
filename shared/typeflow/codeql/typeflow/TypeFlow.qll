@@ -7,6 +7,8 @@
  * type has a subtype or if an inferred upper bound passed through at least one
  * explicit or implicit cast that lost type information.
  */
+overlay[local?]
+module;
 
 private import codeql.util.Location
 
@@ -26,6 +28,12 @@ signature module TypeFlowInput<LocationSig Location> {
     /** Gets the location of this node. */
     Location getLocation();
   }
+
+  /**
+   * Gets an identifier for node `n`, if any. When no identifier is provided for `n`,
+   * the library falls back to location-based ranking.
+   */
+  default int getTypeFlowNodeId(TypeFlowNode n) { none() }
 
   /**
    * Holds if data can flow from `n1` to `n2` in one step.

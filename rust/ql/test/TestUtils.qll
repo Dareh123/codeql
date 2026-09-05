@@ -6,7 +6,7 @@ predicate toBeTested(Element e) {
   (
     not e instanceof Locatable
     or
-    e.(Locatable).fromSource()
+    exists(e.(Locatable).getFile().getRelativePath())
   )
 }
 
@@ -19,4 +19,13 @@ class CrateElement extends Element {
 
 class Builtin extends AstNode {
   Builtin() { this.getFile().getAbsolutePath().matches("%/builtins/%.rs") }
+}
+
+predicate commentAt(string text, string filepath, int line) {
+  exists(Comment c |
+    c.getLocation().hasLocationInfo(filepath, line, _, _, _) and
+    c.getCommentText().trim() = text and
+    c.fromSource() and
+    not text.matches("$%")
+  )
 }

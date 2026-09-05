@@ -2,6 +2,8 @@
  * Provides classes for working with Spring classes and interfaces from
  * `org.springframework.http`.
  */
+overlay[local?]
+module;
 
 import java
 private import semmle.code.java.dataflow.DataFlow
@@ -50,7 +52,7 @@ private class SpringXssSink extends XSS::XssSink {
   SpringXssSink() {
     exists(SpringRequestMappingMethod requestMappingMethod, ReturnStmt rs |
       requestMappingMethod = rs.getEnclosingCallable() and
-      this.asExpr() = rs.getResult() and
+      this.asExpr() = rs.getExpr() and
       (
         not specifiesContentType(requestMappingMethod) or
         isXssVulnerableContentTypeExpr(requestMappingMethod.getAProducesExpr())

@@ -1,3 +1,6 @@
+overlay[local?]
+module;
+
 private import codeql.typeflow.TypeFlow
 private import codeql.typeflow.UniversalFlow as UniversalFlow
 private import codeql.util.Location
@@ -8,6 +11,8 @@ module TypeFlow<LocationSig Location, TypeFlowInput<Location> I> {
 
   private module UfInput implements UniversalFlow::UniversalFlowInput<Location> {
     class FlowNode = TypeFlowNode;
+
+    predicate getFlowNodeId = I::getTypeFlowNodeId/1;
 
     predicate step = I::step/2;
 

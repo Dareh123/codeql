@@ -1,3 +1,6 @@
+overlay[local?]
+module;
+
 private import python
 private import DataFlowPublic
 private import semmle.python.essa.SsaCompute
@@ -39,6 +42,7 @@ predicate isArgumentNode(ArgumentNode arg, DataFlowCall c, ArgumentPosition pos)
 //--------
 // Nodes
 //--------
+overlay[local]
 predicate isExpressionNode(ControlFlowNode node) { node.getNode() instanceof Expr }
 
 // =============================================================================
@@ -111,6 +115,7 @@ class SyntheticPreUpdateNode extends Node, TSyntheticPreUpdateNode {
  * func = foo if <cond> else bar
  * func(1, 2, 3)
  */
+overlay[local]
 class SynthStarArgsElementParameterNode extends ParameterNodeImpl,
   TSynthStarArgsElementParameterNode
 {
@@ -180,8 +185,8 @@ private predicate synthDictSplatArgumentNodeStoreStep(
  */
 predicate yieldStoreStep(Node nodeFrom, Content c, Node nodeTo) {
   exists(Yield yield |
-    nodeTo.asCfgNode() = yield.getAFlowNode() and
-    nodeFrom.asCfgNode() = yield.getValue().getAFlowNode() and
+    nodeTo.asCfgNode().getNode() = yield and
+    nodeFrom.asCfgNode().getNode() = yield.getValue() and
     // TODO: Consider if this will also need to transfer dictionary content
     // once dictionary comprehensions are supported.
     c instanceof ListElementContent
@@ -241,6 +246,7 @@ private predicate dictSplatParameterNodeClearStep(ParameterNode n, DictionaryEle
  *  (c) since the synthesized nodes are hidden, the reported data-flow paths will be
  *      collapsed anyway.
  */
+overlay[local]
 class SynthDictSplatParameterNode extends ParameterNodeImpl, TSynthDictSplatParameterNode {
   DataFlowCallable callable;
 
@@ -523,8 +529,7 @@ predicate simpleLocalFlowStepForTypetracking(Node nodeFrom, Node nodeTo) {
 }
 
 private predicate summaryLocalStep(Node nodeFrom, Node nodeTo, string model) {
-  FlowSummaryImpl::Private::Steps::summaryLocalStep(nodeFrom.(FlowSummaryNode).getSummaryNode(),
-    nodeTo.(FlowSummaryNode).getSummaryNode(), true, model)
+  FlowSummaryImpl::Private::Steps::summaryLocalStep(nodeFrom, nodeTo, true, model)
 }
 
 predicate variableCaptureLocalFlowStep(Node nodeFrom, Node nodeTo) {
@@ -555,6 +560,75 @@ predicate runtimeJumpStep(Node nodeFrom, Node nodeTo) {
     // note: we go to the _control-flow node_ of the parameter, and not the ESSA node of the parameter, since for type-tracking, the ESSA node is not a LocalSourceNode, so we would get in trouble.
     nodeFrom.asCfgNode() = param.getDefault() and
     nodeTo.asCfgNode() = param.getDefiningNode()
+  )
+  or
+  // Enhanced global variable field access tracking
+  globalVariableNestedFieldJumpStep(nodeFrom, nodeTo)
+}
+
+/** Helper predicate for `globalVariableNestedFieldJumpStep`. */
+pragma[nomagic]
+private predicate globalVariableAttrPathRead(
+  ModuleVariableNode globalVar, string accessPath, AttrRead r, string attrName
+) {
+  globalVariableAttrPathAtDepth(globalVar, accessPath, r.getObject(), _) and
+  attrName = r.getAttributeName()
+}
+
+/** Helper predicate for `globalVariableNestedFieldJumpStep`. */
+pragma[nomagic]
+private predicate globalVariableAttrPathWrite(
+  ModuleVariableNode globalVar, string accessPath, AttrWrite w, string attrName
+) {
+  globalVariableAttrPathAtDepth(globalVar, accessPath, w.getObject(), _) and
+  attrName = w.getAttributeName()
+}
+
+/**
+ * Holds if there is a jump step from `nodeFrom` to `nodeTo` through global variable field access.
+ * This supports tracking nested object field access through global variables like `app.obj.foo`.
+ */
+pragma[nomagic]
+private predicate globalVariableNestedFieldJumpStep(Node nodeFrom, Node nodeTo) {
+  exists(ModuleVariableNode globalVar, AttrWrite write, AttrRead read |
+    // Match writes and reads on the same global variable attribute path
+    exists(string accessPath, string attrName |
+      globalVariableAttrPathRead(globalVar, accessPath, read, attrName) and
+      globalVariableAttrPathWrite(globalVar, accessPath, write, attrName)
+    ) and
+    nodeFrom = write.getValue() and
+    nodeTo = read
+  )
+}
+
+/**
+ * Maximum depth for global variable nested attribute access.
+ * Depth 1 = globalVar.foo, depth 2 = globalVar.foo.bar, depth 3 = globalVar.foo.bar.baz, etc.
+ */
+private int getMaxGlobalVariableDepth() { result = 2 }
+
+/**
+ * Holds if `node` is an attribute access path starting from global variable `globalVar` at specific `depth`.
+ */
+private predicate globalVariableAttrPathAtDepth(
+  ModuleVariableNode globalVar, string accessPath, Node node, int depth
+) {
+  // Base case: Direct global variable access (depth 0)
+  depth = 0 and
+  // We use `globalVar` instead of `globalVar.getAWrite()` due to some weirdness with how
+  // attribute writes are handled in the global scope (see `GlobalAttributeAssignmentAsAttrWrite`).
+  node in [globalVar.getARead(), globalVar] and
+  accessPath = ""
+  or
+  exists(Node obj, string attrName, string parentAccessPath, int parentDepth |
+    node.(AttrRead).reads(obj, attrName)
+    or
+    any(AttrWrite aw).writes(obj, attrName, node)
+  |
+    globalVariableAttrPathAtDepth(globalVar, parentAccessPath, obj, parentDepth) and
+    accessPath = parentAccessPath + "." + attrName and
+    depth = parentDepth + 1 and
+    depth <= getMaxGlobalVariableDepth()
   )
 }
 
@@ -613,7 +687,7 @@ DataFlowType getNodeType(Node node) {
 // Extra flow
 //--------
 /**
- * Holds if `pred` can flow to `succ`, by jumping from one callable to
+ * Holds if `nodeFrom` can flow to `nodeTo`, by jumping from one callable to
  * another. Additional steps specified by the configuration are *not*
  * taken into account.
  */
@@ -622,8 +696,7 @@ predicate jumpStep(Node nodeFrom, Node nodeTo) {
   or
   jumpStepNotSharedWithTypeTracker(nodeFrom, nodeTo)
   or
-  FlowSummaryImpl::Private::Steps::summaryJumpStep(nodeFrom.(FlowSummaryNode).getSummaryNode(),
-    nodeTo.(FlowSummaryNode).getSummaryNode())
+  FlowSummaryImpl::Private::Steps::summaryJumpStep(nodeFrom, nodeTo)
 }
 
 /**
@@ -634,7 +707,7 @@ predicate jumpStep(Node nodeFrom, Node nodeTo) {
  * the type-trackers as well, as that would make evaluation of type-tracking recursive
  * with the new jumpsteps.
  *
- * Holds if `pred` can flow to `succ`, by jumping from one callable to
+ * Holds if `nodeFrom` can flow to `nodeTo`, by jumping from one callable to
  * another. Additional steps specified by the configuration are *not*
  * taken into account.
  */
@@ -657,7 +730,7 @@ predicate jumpStepSharedWithTypeTracker(Node nodeFrom, Node nodeTo) {
  * the type-trackers as well, as that would make evaluation of type-tracking recursive
  * with the new jumpsteps.
  *
- * Holds if `pred` can flow to `succ`, by jumping from one callable to
+ * Holds if `nodeFrom` can flow to `nodeTo`, by jumping from one callable to
  * another. Additional steps specified by the configuration are *not*
  * taken into account.
  */
@@ -678,7 +751,7 @@ predicate jumpStepNotSharedWithTypeTracker(Node nodeFrom, Node nodeTo) {
  * As of 2024-04-02 the type-tracking library only supports precise content, so there is
  * no reason to include steps for list content right now.
  */
-predicate storeStepCommon(Node nodeFrom, ContentSet c, Node nodeTo) {
+predicate storeStepCommon(Node nodeFrom, Content c, Node nodeTo) {
   tupleStoreStep(nodeFrom, c, nodeTo)
   or
   dictStoreStep(nodeFrom, c, nodeTo)
@@ -692,29 +765,31 @@ predicate storeStepCommon(Node nodeFrom, ContentSet c, Node nodeTo) {
  * Holds if data can flow from `nodeFrom` to `nodeTo` via an assignment to
  * content `c`.
  */
-predicate storeStep(Node nodeFrom, ContentSet c, Node nodeTo) {
-  storeStepCommon(nodeFrom, c, nodeTo)
+predicate storeStep(Node nodeFrom, ContentSet cs, Node nodeTo) {
+  exists(Content c | cs = singleton(c) |
+    storeStepCommon(nodeFrom, c, nodeTo)
+    or
+    listStoreStep(nodeFrom, c, nodeTo)
+    or
+    setStoreStep(nodeFrom, c, nodeTo)
+    or
+    attributeStoreStep(nodeFrom, c, nodeTo)
+    or
+    matchStoreStep(nodeFrom, c, nodeTo)
+    or
+    any(Orm::AdditionalOrmSteps es).storeStep(nodeFrom, c, nodeTo)
+    or
+    synthStarArgsElementParameterNodeStoreStep(nodeFrom, c, nodeTo)
+    or
+    synthDictSplatArgumentNodeStoreStep(nodeFrom, c, nodeTo)
+    or
+    yieldStoreStep(nodeFrom, c, nodeTo)
+    or
+    VariableCapture::storeStep(nodeFrom, c, nodeTo)
+  )
   or
-  listStoreStep(nodeFrom, c, nodeTo)
-  or
-  setStoreStep(nodeFrom, c, nodeTo)
-  or
-  attributeStoreStep(nodeFrom, c, nodeTo)
-  or
-  matchStoreStep(nodeFrom, c, nodeTo)
-  or
-  any(Orm::AdditionalOrmSteps es).storeStep(nodeFrom, c, nodeTo)
-  or
-  FlowSummaryImpl::Private::Steps::summaryStoreStep(nodeFrom.(FlowSummaryNode).getSummaryNode(), c,
+  FlowSummaryImpl::Private::Steps::summaryStoreStep(nodeFrom.(FlowSummaryNode).getSummaryNode(), cs,
     nodeTo.(FlowSummaryNode).getSummaryNode())
-  or
-  synthStarArgsElementParameterNodeStoreStep(nodeFrom, c, nodeTo)
-  or
-  synthDictSplatArgumentNodeStoreStep(nodeFrom, c, nodeTo)
-  or
-  yieldStoreStep(nodeFrom, c, nodeTo)
-  or
-  VariableCapture::storeStep(nodeFrom, c, nodeTo)
 }
 
 /**
@@ -766,7 +841,7 @@ module Orm {
     abstract predicate storeStep(Node nodeFrom, Content c, Node nodeTo);
 
     /**
-     * Holds if `pred` can flow to `succ`, by jumping from one callable to
+     * Holds if `nodeFrom` can flow to `nodeTo`, by jumping from one callable to
      * another. Additional steps specified by the configuration are *not*
      * taken into account.
      */
@@ -910,7 +985,7 @@ predicate attributeStoreStep(Node nodeFrom, AttributeContent c, Node nodeTo) {
 /**
  * Subset of `readStep` that should be shared with type-tracking.
  */
-predicate readStepCommon(Node nodeFrom, ContentSet c, Node nodeTo) {
+predicate readStepCommon(Node nodeFrom, Content c, Node nodeTo) {
   subscriptReadStep(nodeFrom, c, nodeTo)
   or
   iterableUnpackingReadStep(nodeFrom, c, nodeTo)
@@ -919,21 +994,25 @@ predicate readStepCommon(Node nodeFrom, ContentSet c, Node nodeTo) {
 /**
  * Holds if data can flow from `nodeFrom` to `nodeTo` via a read of content `c`.
  */
-predicate readStep(Node nodeFrom, ContentSet c, Node nodeTo) {
-  readStepCommon(nodeFrom, c, nodeTo)
+predicate readStep(Node nodeFrom, ContentSet cs, Node nodeTo) {
+  exists(Content c | cs = singleton(c) |
+    readStepCommon(nodeFrom, c, nodeTo)
+    or
+    matchReadStep(nodeFrom, c, nodeTo)
+    or
+    forReadStep(nodeFrom, c, nodeTo)
+    or
+    attributeReadStep(nodeFrom, c, nodeTo)
+    or
+    synthDictSplatParameterNodeReadStep(nodeFrom, c, nodeTo)
+    or
+    VariableCapture::readStep(nodeFrom, c, nodeTo)
+  )
   or
-  matchReadStep(nodeFrom, c, nodeTo)
-  or
-  forReadStep(nodeFrom, c, nodeTo)
-  or
-  attributeReadStep(nodeFrom, c, nodeTo)
-  or
-  FlowSummaryImpl::Private::Steps::summaryReadStep(nodeFrom.(FlowSummaryNode).getSummaryNode(), c,
+  FlowSummaryImpl::Private::Steps::summaryReadStep(nodeFrom.(FlowSummaryNode).getSummaryNode(), cs,
     nodeTo.(FlowSummaryNode).getSummaryNode())
   or
-  synthDictSplatParameterNodeReadStep(nodeFrom, c, nodeTo)
-  or
-  VariableCapture::readStep(nodeFrom, c, nodeTo)
+  Conversions::readStep(nodeFrom, cs, nodeTo)
 }
 
 /** Data flows from a sequence to a subscript of the sequence. */
@@ -989,30 +1068,77 @@ predicate attributeReadStep(Node nodeFrom, AttributeContent c, AttrRead nodeTo) 
   nodeTo.accesses(nodeFrom, c.getAttribute())
 }
 
+module Conversions {
+  private import semmle.python.Concepts
+
+  predicate decoderReadStep(Node nodeFrom, ContentSet c, Node nodeTo) {
+    exists(Decoding decoding |
+      nodeFrom = decoding.getAnInput() and
+      nodeTo = decoding.getOutput()
+    ) and
+    c.isAnyTupleOrDictionaryElement()
+  }
+
+  predicate encoderReadStep(Node nodeFrom, ContentSet c, Node nodeTo) {
+    exists(Encoding encoding |
+      nodeFrom = encoding.getAnInput() and
+      nodeTo = encoding.getOutput()
+    ) and
+    c.isAnyTupleOrDictionaryElement()
+  }
+
+  predicate formatReadStep(Node nodeFrom, ContentSet c, Node nodeTo) {
+    // % formatting
+    exists(BinaryExprNode fmt | fmt = nodeTo.asCfgNode() |
+      fmt.getOp() instanceof Mod and
+      fmt.getRight() = nodeFrom.asCfgNode()
+    ) and
+    c.isAnyTupleElement()
+    or
+    // format_map
+    // see https://docs.python.org/3/library/stdtypes.html#str.format_map
+    nodeTo.(MethodCallNode).calls(_, "format_map") and
+    nodeTo.(MethodCallNode).getArg(0) = nodeFrom and
+    c.isAnyDictionaryElement()
+  }
+
+  predicate readStep(Node nodeFrom, ContentSet c, Node nodeTo) {
+    decoderReadStep(nodeFrom, c, nodeTo)
+    or
+    encoderReadStep(nodeFrom, c, nodeTo)
+    or
+    formatReadStep(nodeFrom, c, nodeTo)
+  }
+}
+
 /**
  * Holds if values stored inside content `c` are cleared at node `n`. For example,
  * any value stored inside `f` is cleared at the pre-update node associated with `x`
  * in `x.f = newValue`.
  */
-predicate clearsContent(Node n, ContentSet c) {
-  matchClearStep(n, c)
+predicate clearsContent(Node n, ContentSet cs) {
+  exists(Content c | cs = singleton(c) |
+    matchClearStep(n, c)
+    or
+    attributeClearStep(n, c)
+    or
+    dictClearStep(n, c)
+    or
+    dictSplatParameterNodeClearStep(n, c)
+    or
+    VariableCapture::clearsContent(n, c)
+  )
   or
-  attributeClearStep(n, c)
-  or
-  dictClearStep(n, c)
-  or
-  FlowSummaryImpl::Private::Steps::summaryClearsContent(n.(FlowSummaryNode).getSummaryNode(), c)
-  or
-  dictSplatParameterNodeClearStep(n, c)
-  or
-  VariableCapture::clearsContent(n, c)
+  FlowSummaryImpl::Private::Steps::summaryClearsContent(n.(FlowSummaryNode).getSummaryNode(), cs)
 }
 
 /**
  * Holds if the value that is being tracked is expected to be stored inside content `c`
  * at node `n`.
  */
-predicate expectsContent(Node n, ContentSet c) { none() }
+predicate expectsContent(Node n, ContentSet c) {
+  FlowSummaryImpl::Private::Steps::summaryExpectsContent(n.(FlowSummaryNode).getSummaryNode(), c)
+}
 
 /**
  * Holds if values stored inside attribute `c` are cleared at node `n`.
@@ -1059,6 +1185,14 @@ predicate nodeIsHidden(Node n) {
   n instanceof SynthCaptureNode
   or
   n instanceof SynthCapturedVariablesParameterNode
+  or
+  n instanceof SynthCapturedVariablesArgumentNode
+  or
+  n instanceof SynthCapturedVariablesArgumentPostUpdateNode
+  or
+  n instanceof SynthCompCapturedVariablesArgumentNode
+  or
+  n instanceof SynthCompCapturedVariablesArgumentPostUpdateNode
 }
 
 class LambdaCallKind = Unit;
@@ -1115,12 +1249,65 @@ predicate allowParameterReturnInSelf(ParameterNode p) {
   )
 }
 
+bindingset[s]
+private string getFirstChar(string s) {
+  result =
+    min(int i, string c |
+      c = s.charAt(i) and c != "_"
+      or
+      c = "" and i = s.length()
+    |
+      c order by i
+    )
+}
+
+private string getAttributeContentFirstChar(AttributeContent ac) {
+  result = getFirstChar(ac.getAttribute())
+}
+
+private string getDictionaryElementContentKeyFirstChar(DictionaryElementContent dec) {
+  result = getFirstChar(dec.getKey())
+}
+
+private newtype TContentApprox =
+  TListElementContentApprox() or
+  TSetElementContentApprox() or
+  TTupleElementContentApprox() or
+  TDictionaryElementContentApprox(string first) {
+    first = "" // for `TDictionaryElementAnyContent`
+    or
+    first = getDictionaryElementContentKeyFirstChar(_)
+  } or
+  TAttributeContentApprox(string first) { first = getAttributeContentFirstChar(_) } or
+  TCapturedVariableContentApprox()
+
 /** An approximated `Content`. */
-class ContentApprox = Unit;
+class ContentApprox extends TContentApprox {
+  /** Gets a textual representation of this element. */
+  string toString() { result = "" }
+}
 
 /** Gets an approximated value for content `c`. */
-pragma[inline]
-ContentApprox getContentApprox(Content c) { any() }
+ContentApprox getContentApprox(Content c) {
+  c = TListElementContent() and
+  result = TListElementContentApprox()
+  or
+  c = TSetElementContent() and
+  result = TSetElementContentApprox()
+  or
+  c = TTupleElementContent(_) and
+  result = TTupleElementContentApprox()
+  or
+  result = TDictionaryElementContentApprox(getDictionaryElementContentKeyFirstChar(c))
+  or
+  c = TDictionaryElementAnyContent() and
+  result = TDictionaryElementContentApprox("")
+  or
+  result = TAttributeContentApprox(getAttributeContentFirstChar(c))
+  or
+  c = TCapturedVariableContent(_) and
+  result = TCapturedVariableContentApprox()
+}
 
 /** Helper for `.getEnclosingCallable`. */
 DataFlowCallable getCallableScope(Scope s) {

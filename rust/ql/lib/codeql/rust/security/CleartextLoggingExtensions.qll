@@ -5,9 +5,11 @@
 
 import rust
 private import codeql.rust.dataflow.DataFlow
-private import codeql.rust.dataflow.internal.DataFlowImpl
+private import codeql.rust.dataflow.FlowBarrier
+private import codeql.rust.dataflow.FlowSink
 private import codeql.rust.security.SensitiveData
 private import codeql.rust.Concepts
+private import codeql.rust.security.Barriers as Barriers
 
 /**
  * Provides default sources, sinks and barriers for detecting cleartext logging
@@ -40,6 +42,18 @@ module CleartextLogging {
    * A sink for logging from model data.
    */
   private class ModelsAsDataSink extends Sink {
-    ModelsAsDataSink() { exists(string s | sinkNode(this, s) and s.matches("log-injection%")) }
+    ModelsAsDataSink() { sinkNode(this, "log-injection") }
   }
+
+  /**
+   * A barrier for logging from model data.
+   */
+  private class ModelsAsDataBarrier extends Barrier {
+    ModelsAsDataBarrier() { barrierNode(this, "log-injection") }
+  }
+
+  private class BooleanTypeBarrier extends Barrier instanceof Barriers::BooleanTypeBarrier { }
+
+  private class FieldlessEnumTypeBarrier extends Barrier instanceof Barriers::FieldlessEnumTypeBarrier
+  { }
 }

@@ -1,8 +1,183 @@
+## 1.8.3
+
+### Minor Analysis Improvements
+
+* The `cpp/leap-year/unsafe-array-for-days-of-the-year` query ("Unsafe array for days of the year") no longer reports an alert on the `__PRETTY_FUNCTION__` variable (and related variables) when the enclosing function has a signature that is exactly 364 characters.
+
+## 1.8.2
+
+No user-facing changes.
+
+## 1.8.1
+
+No user-facing changes.
+
+## 1.8.0
+
+### Query Metadata Changes
+
+* Added the tag `external/cwe/cwe-762` to `cpp/new-free-mismatch`, and removed the tag `external/cwe/cwe-401`. This better matches the behavior of the query.
+
+## 1.7.0
+
+### Query Metadata Changes
+
+* Added the tags `external/cwe/cwe-073` and `external/cwe/cwe-078` to `cpp/uncontrolled-process-operation`.
+
+## 1.6.5
+
+No user-facing changes.
+
+## 1.6.4
+
+No user-facing changes.
+
+## 1.6.3
+
+### Minor Analysis Improvements
+
+* The 'Cleartext transmission of sensitive information' query (`cpp/cleartext-transmission`) no longer raises an alert on calls to `fscanf` (and variants) when the call reads from an "obviously local" `FILE` stream such as `stdin`.
+
+## 1.6.2
+
+No user-facing changes.
+
+## 1.6.1
+
+### Minor Analysis Improvements
+
+* Added `AllocationFunction` models for `aligned_alloc`, `std::aligned_alloc`, and `bsl::aligned_alloc`.
+* The "Comparison of narrow type with wide type in loop condition" (`cpp/comparison-with-wider-type`) query has been upgraded to `high` precision. This query will now run in the default code scanning suite.
+* The "Multiplication result converted to larger type" (`cpp/integer-multiplication-cast-to-long`) query has been upgraded to `high` precision. This query will now run in the default code scanning suite.
+* The "Suspicious add with sizeof" (`cpp/suspicious-add-sizeof`) query has been upgraded to `high` precision. This query will now run in the default code scanning suite.
+* The "Wrong type of arguments to formatting function" (`cpp/wrong-type-format-argument`) query has been upgraded to `high` precision. This query will now run in the default code scanning suite.
+* The "Implicit function declaration" (`cpp/implicit-function-declaration`) query has been upgraded to `high` precision. However, for `build-mode: none` databases, it no longer produces any results. The results in this mode were found to be very noisy and fundamentally imprecise.
+
+## 1.6.0
+
+### Query Metadata Changes
+
+* The `@security-severity` metadata of `cpp/cgi-xss` has been increased from 6.1 (medium) to 7.8 (high).
+
+### Minor Analysis Improvements
+
+* The "Extraction warnings" (`cpp/diagnostics/extraction-warnings`) diagnostics query no longer yields `ExtractionRecoverableWarning`s for `build-mode: none` databases. The results were found to significantly increase the sizes of the produced SARIF files, making them unprocessable in some cases.
+* Fixed an issue with the "Suspicious add with sizeof" (`cpp/suspicious-add-sizeof`) query causing false positive results in `build-mode: none` databases.
+* Fixed an issue with the "Uncontrolled format string" (`cpp/tainted-format-string`) query involving certain kinds of formatting function implementations.
+* Fixed an issue with the "Wrong type of arguments to formatting function" (`cpp/wrong-type-format-argument`) query causing false positive results in `build-mode: none` databases.
+* Fixed an issue with the "Multiplication result converted to larger type" (`cpp/integer-multiplication-cast-to-long`) query causing false positive results in `build-mode: none` databases.
+
+## 1.5.15
+
+No user-facing changes.
+
+## 1.5.14
+
+No user-facing changes.
+
+## 1.5.13
+
+No user-facing changes.
+
+## 1.5.12
+
+No user-facing changes.
+
+## 1.5.11
+
+No user-facing changes.
+
+## 1.5.10
+
+No user-facing changes.
+
+## 1.5.9
+
+### Minor Analysis Improvements
+
+* The `cpp/constant-comparison` query has been updated to not produce false positives for constants that are now represented by their unfolded expression trees.
+
+## 1.5.8
+
+No user-facing changes.
+
+## 1.5.7
+
+No user-facing changes.
+
+## 1.5.6
+
+No user-facing changes.
+
+## 1.5.5
+
+No user-facing changes.
+
+## 1.5.4
+
+No user-facing changes.
+
+## 1.5.3
+
+No user-facing changes.
+
+## 1.5.2
+
+No user-facing changes.
+
+## 1.5.1
+
+No user-facing changes.
+
+## 1.5.0
+
+### Major Analysis Improvements
+
+* The queries `cpp/wrong-type-format-argument`, `cpp/comparison-with-wider-type`, `cpp/integer-multiplication-cast-to-long`, `cpp/implicit-function-declaration` and `cpp/suspicious-add-sizeof` have had their precisions reduced from `high` to `medium`. They will also now give alerts for projects built with `build-mode: none`.
+* The queries `cpp/wrong-type-format-argument`, `cpp/comparison-with-wider-type`, `cpp/integer-multiplication-cast-to-long` and `cpp/suspicious-add-sizeof` are no longer included in the `code-scanning` suite.
+
+### Bug Fixes
+
+* The predicate `occurenceCount` in the file module `MagicConstants` has been deprecated. Use `occurrenceCount` instead.
+* The predicate `additionalAdditionOrSubstractionCheckForLeapYear` in the file module `LeapYear` has been deprecated. Use `additionalAdditionOrSubtractionCheckForLeapYear` instead.
+
+## 1.4.7
+
+### Bug Fixes
+
+* Fixed an inconsistency across languages where most have a `Customizations.qll` file for adding customizations, but not all did.
+
+## 1.4.6
+
+### Minor Analysis Improvements
+
+* The `cpp/short-global-name` query will no longer give alerts for instantiations of template variables, only for the template itself.
+* Fixed a false positive in `cpp/overflow-buffer` when the type of the destination buffer is a reference to a class/struct type.
+
+## 1.4.5
+
+### Minor Analysis Improvements
+
+* The "Initialization code not run" query (`cpp/initialization-not-run`) no longer reports an alert on static global variables that have no dereference.
+
+## 1.4.4
+
+### Minor Analysis Improvements
+
+* Due to changes in the `FunctionWithWrappers` library (`semmle.code.cpp.security.FunctionWithWrappers`) the primary alert location generated by the queries `cpp/path-injection`, `cpp/sql-injection`, `cpp/tainted-format-string`, and `cpp/command-line-injection` may have changed.
+* Added flow models for the Win32 API functions `CreateThread`, `CreateRemoteThread`, and `CreateRemoteThreadEx`.
+* Improved support for dataflow through function objects and lambda expressions.
+* Added flow models for `pthread_create` and `std::thread`.
+* The `cpp/incorrect-string-type-conversion` query no longer alerts on incorrect type conversions that occur in unreachable code.
+* Added flow models for the GNU C Library.
+* Fixed a number of false positives and false negatives in `cpp/global-use-before-init`. Note that this query is not part of any of the default query suites.
+* The query `cpp/sql-injection` now can be extended using the `sql-injection` Models as Data (MaD) sink kind.
+
 ## 1.4.3
 
 ### Minor Analysis Improvements
 
-* Added flow model for the following libraries: `madler/zlib`, `google/brotli`, `libidn/libidn2`, `libssh2/libssh2/`, `nghttp2/nghttp2`, `libuv/libuv/`, and `curl/curl`. This may result in more alerts when running queries on codebases that use these libraries.
+* Added flow models for the following libraries: `madler/zlib`, `google/brotli`, `libidn/libidn2`, `libssh2/libssh2`, `nghttp2/nghttp2`, `libuv/libuv`, and `curl/curl`. This may result in more alerts when running queries on codebases that use these libraries.
 
 ## 1.4.2
 
@@ -12,7 +187,7 @@ No user-facing changes.
 
 ### Minor Analysis Improvements
 
-* Added flow model for the `SQLite` and `OpenSSL` libraries. This may result in more alerts when running queries on codebases that use these libraries.
+* Added flow models for the `SQLite` and `OpenSSL` libraries. This may result in more alerts when running queries on codebases that use these libraries.
 
 ## 1.4.0
 

@@ -99,20 +99,53 @@ class OutputClobberingFromEnvVarSink extends OutputClobberingSink {
  *          echo $BODY
  */
 class WorkflowCommandClobberingFromEnvVarSink extends OutputClobberingSink {
-  string clobbering_var;
-  string clobbered_value;
-
   WorkflowCommandClobberingFromEnvVarSink() {
-    exists(Run run, string workflow_cmd_stmt, string clobbering_stmt |
+    exists(Run run, string workflow_cmd_stmt, string clobbering_stmt, string clobbering_var |
       run.getScript() = this.asExpr() and
       run.getScript().getAStmt() = clobbering_stmt and
       clobbering_stmt.regexpMatch("echo\\s+(-e\\s+)?(\"|')?\\$(\\{)?" + clobbering_var + ".*") and
       exists(run.getInScopeEnvVarExpr(clobbering_var)) and
       run.getScript().getAStmt() = workflow_cmd_stmt and
-      clobbered_value =
-        trimQuotes(workflow_cmd_stmt.regexpCapture(".*::set-output\\s+name=.*::(.*)", 1))
+      exists(trimQuotes(workflow_cmd_stmt.regexpCapture(".*::set-output\\s+name=.*::(.*)", 1)))
     )
   }
+}
+
+private string jqSafeOptionRegexp() {
+  result = "-[acCMeRnSs]+"
+  or
+  result =
+    "--(ascii-output|color-output|compact-output|exit-status|monochrome-output|null-input|" +
+      "raw-input|slurp|sort-keys|unbuffered)"
+}
+
+private string jqSimpleFilterRegexp() {
+  result = "\\."
+  or
+  result = "\\.[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*|\\[[0-9]+\\])*"
+}
+
+private string jqSimpleFilterArgumentRegexp() {
+  result = jqSimpleFilterRegexp()
+  or
+  result = "'" + jqSimpleFilterRegexp() + "'"
+  or
+  result = "\"" + jqSimpleFilterRegexp() + "\""
+}
+
+private string jqLiteralInputRegexp() {
+  result = "[A-Za-z0-9_./][A-Za-z0-9_./-]*"
+  or
+  result = "\\$GITHUB_EVENT_PATH"
+  or
+  result = "\\$\\{GITHUB_EVENT_PATH\\}"
+}
+
+bindingset[command]
+private predicate jqProducesJsonEncodedOutput(string command) {
+  command
+      .regexpMatch("jq(\\s+" + jqSafeOptionRegexp() + ")*\\s+" + jqSimpleFilterArgumentRegexp() +
+          "(\\s+" + jqSafeOptionRegexp() + ")*(\\s+" + jqLiteralInputRegexp() + ")*")
 }
 
 /**
@@ -163,13 +196,17 @@ class WorkflowCommandClobberingFromFileReadSink extends OutputClobberingSink {
         clobbering_cmd.regexpMatch(["ls", Bash::fileReadCommand()] + "\\s.*") and
         (
           // - run: echo "foo=$(<pr-id.txt)"
-          clobbering_stmt.regexpMatch("echo.*" + clobbering_cmd + ".*")
+          exists(string echo, int echoOffset |
+            echo = clobbering_stmt.regexpFind("\\becho\\s+", _, echoOffset) and
+            clobbering_stmt.indexOf(clobbering_cmd, 0, echoOffset + echo.length()) >= 0
+          )
           or
           // A file content is printed to stdout
           // - run: cat pr-id.txt
           clobbering_stmt.indexOf(clobbering_cmd) = 0
         )
-      )
+      ) and
+      not jqProducesJsonEncodedOutput(clobbering_cmd)
     )
   }
 }
@@ -216,8 +253,6 @@ private module OutputClobberingConfig implements DataFlow::ConfigSig {
   }
 
   predicate observeDiffInformedIncrementalMode() { any() }
-
-  Location getASelectedSourceLocation(DataFlow::Node sink) { none() }
 }
 
 /** Tracks flow of unsafe user input that is used to construct and evaluate an environment variable. */

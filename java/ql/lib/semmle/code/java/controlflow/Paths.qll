@@ -2,6 +2,8 @@
  * This library provides predicates for reasoning about the set of all paths
  * through a callable.
  */
+overlay[local?]
+module;
 
 import java
 import semmle.code.java.dispatch.VirtualDispatch
@@ -32,7 +34,7 @@ abstract class ActionConfiguration extends string {
 private BasicBlock actionBlock(ActionConfiguration conf) {
   exists(ControlFlowNode node | result = node.getBasicBlock() |
     conf.isAction(node) or
-    callAlwaysPerformsAction(node.asCall(), conf)
+    callAlwaysPerformsAction(any(Call call | call.getControlFlowNode() = node), conf)
   )
 }
 

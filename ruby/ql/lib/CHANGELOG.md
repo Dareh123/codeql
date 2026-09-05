@@ -1,3 +1,164 @@
+## 7.0.0
+
+### Breaking Changes
+
+* The Ruby control flow graph implementation has been completely replaced. This
+  affects a number of queries slightly. The CFG now includes additional nodes
+  to more accurately represent certain constructs. This also means that any
+  existing code that implicitly relies on very specific details about the CFG
+  may need to be updated. The CFG no longer uses splitting, which means that
+  AST nodes now have a unique CFG node representation. In particular,
+  `ControlFlowNode.getAstNode` has changed its meaning. The AST-to-CFG mapping
+  remains one-to-many, but now for a different reason. It used to be because of
+  splitting, but now it's because of additional "helper" CFG nodes. To get the
+  (now canonical) CFG node for a given AST node, use
+  `Stmt.getControlFlowNode()` instead.
+
+## 6.0.4
+
+### Minor Analysis Improvements
+
+* The algorithm for tracking regexes has been replaced. This can cause result changes in related queries, for example, `rb/polynomial-redos`.
+
+## 6.0.3
+
+### Minor Analysis Improvements
+
+* Removed library input to vendored gems from the set of taint sources. This should reduce false positives for `rb/polynomial-redos`, `rb/regex/badly-anchored-regexp`, `rb/unsafe-code-construction`, `rb/html-constructed-from-input`, and `rb/shell-command-constructed-from-input` whenever vendoring is used.
+
+## 6.0.2
+
+No user-facing changes.
+
+## 6.0.1
+
+No user-facing changes.
+
+## 6.0.0
+
+### Breaking Changes
+
+* The `else` branch of a `case` expression is no longer represented as a `StmtSequence` directly. Instead, a new `CaseElseBranch` AST node wraps the body (a `StmtSequence`). `CaseExpr.getElseBranch()` now returns a `CaseElseBranch`, and the body of the else branch can be accessed via `CaseElseBranch.getBody()`.
+
+## 5.2.2
+
+No user-facing changes.
+
+## 5.2.1
+
+No user-facing changes.
+
+## 5.2.0
+
+### New Features
+
+* Data flow barriers and barrier guards can now be added using data extensions. For more information see [Customizing library models for Ruby](https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-ruby/).
+
+## 5.1.16
+
+No user-facing changes.
+
+## 5.1.15
+
+No user-facing changes.
+
+## 5.1.14
+
+No user-facing changes.
+
+## 5.1.13
+
+No user-facing changes.
+
+## 5.1.12
+
+### Minor Analysis Improvements
+
+* Inline expectations test comments, which are of the form `# $ tag` or `# $ tag=value`, are now parsed more strictly and will not be recognized if there isn't a space after the `$` symbol.
+
+## 5.1.11
+
+### Minor Analysis Improvements
+
+* We now track taint flow through `Shellwords.escape` and `Shellwords.shellescape` for all queries except command injection, for which they are sanitizers.
+
+## 5.1.10
+
+No user-facing changes.
+
+## 5.1.9
+
+### Minor Analysis Improvements
+
+* The predicate `SummarizedCallable.propagatesFlow` has been extended with the columns `Provenance p` and `boolean isExact`, and as a consequence the predicates `SummarizedCallable.hasProvenance` and `SummarizedCallable.hasExactModel` have been removed.
+
+## 5.1.8
+
+No user-facing changes.
+
+## 5.1.7
+
+No user-facing changes.
+
+## 5.1.6
+
+No user-facing changes.
+
+## 5.1.5
+
+No user-facing changes.
+
+## 5.1.4
+
+No user-facing changes.
+
+## 5.1.3
+
+No user-facing changes.
+
+## 5.1.2
+
+No user-facing changes.
+
+## 5.1.1
+
+No user-facing changes.
+
+## 5.1.0
+
+### New Features
+
+* Initial modeling for the Ruby Grape framework in `Grape.qll` has been added to detect API endpoints, parameters, and headers within Grape API classes.
+
+## 5.0.4
+
+No user-facing changes.
+
+## 5.0.3
+
+No user-facing changes.
+
+## 5.0.2
+
+### Bug Fixes
+
+* Made the following changes to `NetHttpRequest`
+  * Adds `connectionNode`, like other Ruby HTTP clients
+  * Makes `requestNode` and `connectionNode` public so subclasses can use them
+  * Adds detection of `Net::HTTP.start`, a common way to make HTTP requests in Ruby
+
+## 5.0.1
+
+### Minor Analysis Improvements
+
+* The regular expressions in `SensitiveDataHeuristics.qll` have been extended to find more instances of sensitive data such as secrets used in authentication, finance and health information, and device data. The heuristics have also been refined to find fewer false positive matches. This will improve results for queries related to sensitive information.
+
+## 5.0.0
+
+### Breaking Changes
+
+* Most classes and predicates in the AST, SSA, and control-flow-graph libraries are now annotated with `overlay[local]`, in preparation for incremental analysis. This could result in compiler errors for custom queries if they extend these classes. To mitigate such errors, look for ways to restructure custom QL code so it doesn't depend on changing the behavior of standard-library classes.
+
 ## 4.1.9
 
 No user-facing changes.

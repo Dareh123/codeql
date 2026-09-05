@@ -8,7 +8,7 @@ private import codeql.rust.dataflow.internal.DataFlowImpl
 private import codeql.rust.dataflow.internal.TaintTrackingImpl
 private import codeql.rust.internal.AstConsistency as AstConsistency
 private import codeql.rust.internal.PathResolutionConsistency as PathResolutionConsistency
-private import codeql.rust.internal.TypeInferenceConsistency as TypeInferenceConsistency
+private import codeql.rust.internal.typeinference.TypeInferenceConsistency as TypeInferenceConsistency
 private import codeql.rust.controlflow.internal.CfgConsistency as CfgConsistency
 private import codeql.rust.dataflow.internal.DataFlowConsistency as DataFlowConsistency
 private import codeql.rust.dataflow.internal.SsaImpl::Consistency as SsaConsistency
@@ -20,11 +20,19 @@ private import TaintReach
 private import codeql.rust.security.regex.RegexInjectionExtensions
 private import codeql.rust.security.AccessInvalidPointerExtensions
 private import codeql.rust.security.CleartextLoggingExtensions
+private import codeql.rust.security.CleartextStorageDatabaseExtensions
 private import codeql.rust.security.CleartextTransmissionExtensions
+private import codeql.rust.security.DisabledCertificateCheckExtensions
+private import codeql.rust.security.HardcodedCryptographicValueExtensions
+private import codeql.rust.security.InsecureCookieExtensions
+private import codeql.rust.security.LogInjectionExtensions
+private import codeql.rust.security.RequestForgeryExtensions
 private import codeql.rust.security.SqlInjectionExtensions
 private import codeql.rust.security.TaintedPathExtensions
 private import codeql.rust.security.UncontrolledAllocationSizeExtensions
+private import codeql.rust.security.UseOfHttpExtensions
 private import codeql.rust.security.WeakSensitiveDataHashingExtensions
+private import codeql.rust.security.XssExtensions
 
 /**
  * Gets a count of the total number of lines of code in the database.
@@ -123,7 +131,8 @@ predicate extractionStats(string key, int value) {
   key = "Extraction warnings" and
   value = count(ExtractionWarning w | not exists(w.getLocation()) or w.getLocation().fromSource())
   or
-  key = "Files extracted - total" and value = count(ExtractedFile f | exists(f.getRelativePath()))
+  key = "Files extracted - total user" and
+  value = count(ExtractedFile f | exists(f.getRelativePath()))
   or
   key = "Files extracted - with errors" and
   value =
@@ -150,6 +159,13 @@ predicate extractionStats(string key, int value) {
   or
   key = "Macro calls - unresolved" and
   value = count(MacroCall mc | mc.fromSource() and not mc.hasMacroCallExpansion())
+}
+
+/**
+ * Gets further summary statistics about extraction.
+ */
+predicate extractionStatsExtra(string key, int value) {
+  key = "Files extracted - total" and value = count(File f)
 }
 
 /**

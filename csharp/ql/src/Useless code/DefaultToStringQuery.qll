@@ -30,7 +30,7 @@ predicate invokesToString(Expr e, ValueOrRefType t) {
 
 pragma[nomagic]
 private predicate parameterReadPostDominatesEntry(ParameterRead pr) {
-  pr.getAControlFlowNode().postDominates(pr.getEnclosingCallable().getEntryPoint())
+  pr.getControlFlowNode().postDominates(pr.getEnclosingCallable().getEntryPoint())
 }
 
 pragma[nomagic]
@@ -47,6 +47,7 @@ private predicate alwaysInvokesToString(ParameterRead pr) {
  */
 predicate alwaysDefaultToString(ValueOrRefType t) {
   not t instanceof TupleType and
+  not t instanceof Enum and
   exists(ToStringMethod m | t.hasMethod(m) |
     m.getDeclaringType() instanceof SystemObjectClass or
     m.getDeclaringType() instanceof SystemValueTypeClass
